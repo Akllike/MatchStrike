@@ -1,0 +1,480 @@
+<script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import {
+  Activity,
+  ArrowUpRight,
+  Ban,
+  ChevronDown,
+  CircleHelp,
+  Gamepad2,
+  LogIn,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings,
+  Shield,
+  ShieldCheck,
+  UserPlus,
+  UserRound,
+  Users,
+  X,
+} from '@lucide/vue'
+import { ApiRequestError, getCurrentUser, loginAccount, logoutAccount, registerAccount } from './api'
+import type { AuthUser, LoginPayload, RegisterPayload } from './api'
+import { adminLandingPath } from './adminAccess'
+
+type AuthMode = 'login' | 'register' | 'help' | 'privacy' | 'required' | null
+
+interface Account {
+  id: number
+  nickname: string
+  adminRole: AuthUser['adminRole']
+  avatarUrl?: string
+  initials: string
+}
+
+const route = useRoute()
+const router = useRouter()
+const authMode = ref<AuthMode>(null)
+const currentUser = ref<Account | null>(null)
+const sidebarCollapsed = ref(false)
+const authRedirect = ref<string | null>(null)
+const profileMenuOpen = ref(false)
+const authBusy = ref(false)
+const authMessage = ref('')
+const authErrors = ref<Record<string, string[]>>({})
+const twoFactorRequired = ref(false)
+const authForm = reactive({
+  email: '',
+  nickname: '',
+  password: '',
+  two_factor_code: '',
+  password_confirmation: '',
+  privacy_accepted: false,
+})
+const activityEvents = ['pointerdown', 'keydown', 'scroll', 'touchstart'] as const
+let lastSessionRefreshAt = 0
+
+function sidebarPreferenceKey(userId: number | null): string {
+  return userId === null ? 'matchstrike.sidebar.guest' : `matchstrike.sidebar.user.${userId}`
+}
+
+function readSidebarPreference(userId: number | null): boolean {
+  try {
+    return localStorage.getItem(sidebarPreferenceKey(userId)) === 'collapsed'
+  } catch {
+    return false
+  }
+}
+
+watch(currentUser, (user) => {
+  sidebarCollapsed.value = readSidebarPreference(user?.id ?? null)
+}, { immediate: true })
+
+function toggleSidebar() {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+  try {
+    localStorage.setItem(
+      sidebarPreferenceKey(currentUser.value?.id ?? null),
+      sidebarCollapsed.value ? 'collapsed' : 'expanded',
+    )
+  } catch {
+    // Keep the control usable when browser storage is unavailable.
+  }
+}
+
+const navigation = [
+  { id: 'matches', label: 'Матчи', to: '/matches', icon: Gamepad2 },
+  { id: 'stats', label: 'Статистика', to: '/stats', icon: Activity },
+  { id: 'bans', label: 'Баны', to: '/bans', icon: Ban },
+]
+
+const profileLink = computed(() => currentUser.value
+  ? `/profile/${encodeURIComponent(currentUser.value.nickname)}`
+  : '/')
+const adminPanelLink = computed(() => currentUser.value?.adminRole
+  ? adminLandingPath(currentUser.value.adminRole)
+  : '/adminpanel')
+
+const authTitle = computed(() => {
+  if (authMode.value === 'register') return 'Создать аккаунт'
+  if (authMode.value === 'help') return 'Помощь'
+  if (authMode.value === 'privacy') return 'Политика конфиденциальности'
+  if (authMode.value === 'required') return 'Вы не авторизованы'
+  return 'Войти в MatchStrike'
+})
+
+const authDescription = computed(() => {
+  if (authMode.value === 'help') return 'Раздел поддержки будет доступен после настройки каналов связи.'
+  if (authMode.value === 'required') return 'Чтобы пожаловаться на игрока, войдите в аккаунт или зарегистрируйтесь.'
+  return ''
+})
+
+const hasEmailConflict = computed(() => authErrors.value.email?.some((message) => message.includes('уже зарегистрирован')) ?? false)
+
+function accountFromUser(user: AuthUser): Account {
+  return {
+    id: user.id,
+    nickname: user.nickname,
+    adminRole: user.adminRole,
+    avatarUrl: user.avatarUrl ?? undefined,
+    initials: user.nickname.slice(0, 1).toUpperCase(),
+  }
+}
+
+function updateCurrentUser(user: AuthUser) {
+  currentUser.value = accountFromUser(user)
+}
+
+const pageEventListeners = computed(() => {
+  if (route.name === 'profile') {
+    return {
+      accountUpdated: updateCurrentUser,
+      authRequested: () => openAuth('required'),
+    }
+  }
+  if (route.name === 'settings') {
+    return { accountUpdated: updateCurrentUser }
+  }
+
+  return {}
+})
+
+function openAuth(mode: Exclude<AuthMode, 'help' | 'privacy' | null>) {
+  profileMenuOpen.value = false
+  authErrors.value = {}
+  authMessage.value = ''
+  twoFactorRequired.value = false
+  Object.assign(authForm, {
+    email: '',
+    nickname: '',
+    password: '',
+    two_factor_code: '',
+    password_confirmation: '',
+    privacy_accepted: false,
+  })
+  authMode.value = mode
+}
+
+watch(() => route.query.auth, (auth) => {
+  if (auth !== 'login') return
+
+  const redirect = route.query.redirect
+  authRedirect.value = typeof redirect === 'string' && redirect.startsWith('/') && !redirect.startsWith('//')
+    ? redirect
+    : null
+  openAuth('login')
+}, { immediate: true })
+
+function closeDialog(clearAuthQuery = true) {
+  const shouldClearAuthQuery = clearAuthQuery && route.query.auth === 'login'
+  authMode.value = null
+  authErrors.value = {}
+  authMessage.value = ''
+  twoFactorRequired.value = false
+  authRedirect.value = null
+  if (shouldClearAuthQuery) void router.replace({ name: 'home' })
+}
+
+function switchToLogin() {
+  const email = authForm.email
+  openAuth('login')
+  authForm.email = email
+}
+
+function fieldError(field: string): string {
+  return authErrors.value[field]?.[0] ?? ''
+}
+
+async function submitAuth() {
+  if (authBusy.value || (authMode.value !== 'login' && authMode.value !== 'register')) return
+
+  authBusy.value = true
+  authErrors.value = {}
+  authMessage.value = ''
+
+  try {
+    let user: AuthUser
+
+    if (authMode.value === 'register') {
+      const payload: RegisterPayload = {
+        email: authForm.email,
+        nickname: authForm.nickname,
+        password: authForm.password,
+        password_confirmation: authForm.password_confirmation,
+        privacy_accepted: authForm.privacy_accepted,
+      }
+      user = await registerAccount(payload)
+    } else {
+      const payload: LoginPayload = {
+        email: authForm.email,
+        password: authForm.password,
+        ...(twoFactorRequired.value ? { two_factor_code: authForm.two_factor_code } : {}),
+      }
+      const response = await loginAccount(payload)
+      if (response.requiresTwoFactor) {
+        twoFactorRequired.value = true
+        return
+      }
+      if (!response.user) throw new Error('Вход не завершён.')
+      user = response.user
+    }
+
+    currentUser.value = accountFromUser(user)
+    lastSessionRefreshAt = Date.now()
+    const redirect = authRedirect.value
+    closeDialog(false)
+    if (redirect) await router.replace(redirect)
+    else if (route.query.auth === 'login') await router.replace({ name: 'home' })
+  } catch (error) {
+    if (error instanceof ApiRequestError) {
+      authErrors.value = error.errors
+      if (Object.keys(error.errors).length === 0) authMessage.value = error.message
+    } else {
+      authMessage.value = 'Не удалось связаться с сервером. Попробуйте ещё раз.'
+    }
+  } finally {
+    authBusy.value = false
+  }
+}
+
+async function signOut() {
+  profileMenuOpen.value = false
+  try {
+    await logoutAccount()
+    currentUser.value = null
+    profileMenuOpen.value = false
+    await router.replace({ name: 'home' })
+  } catch {
+    authMode.value = 'login'
+    authMessage.value = 'Не удалось завершить сеанс. Попробуйте ещё раз.'
+  }
+}
+
+function refreshSessionOnActivity() {
+  if (!currentUser.value || document.visibilityState !== 'visible') return
+  if (Date.now() - lastSessionRefreshAt < 5 * 60 * 1000) return
+
+  lastSessionRefreshAt = Date.now()
+  void getCurrentUser().then((user) => {
+    if (user) {
+      currentUser.value = accountFromUser(user)
+      return
+    }
+
+    currentUser.value = null
+    if (route.name === 'friends') {
+      void router.replace({ name: 'home', query: { auth: 'login', redirect: '/friends' } })
+    }
+  }).catch(() => undefined)
+}
+
+onMounted(async () => {
+  for (const eventName of activityEvents) {
+    window.addEventListener(eventName, refreshSessionOnActivity, { passive: true })
+  }
+
+  try {
+    const user = await getCurrentUser()
+    if (user) {
+      currentUser.value = accountFromUser(user)
+      lastSessionRefreshAt = Date.now()
+    }
+  } catch {
+    currentUser.value = null
+  }
+})
+
+onBeforeUnmount(() => {
+  for (const eventName of activityEvents) {
+    window.removeEventListener(eventName, refreshSessionOnActivity)
+  }
+})
+</script>
+
+<template>
+  <div id="top" class="site-shell" :class="{ 'is-sidebar-collapsed': sidebarCollapsed }">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <RouterLink class="brand" to="/" aria-label="MatchStrike — главная">
+          <span class="brand-mark"><Shield :size="19" :stroke-width="2.2" /></span>
+          <span class="brand-name">MATCH<span>STRIKE</span><small>CS COMMUNITY</small></span>
+        </RouterLink>
+        <button
+          class="sidebar-collapse-toggle"
+          type="button"
+          :aria-label="sidebarCollapsed ? 'Развернуть меню' : 'Свернуть меню'"
+          :title="sidebarCollapsed ? 'Развернуть меню' : 'Свернуть меню'"
+          :aria-expanded="!sidebarCollapsed"
+          aria-controls="primary-navigation"
+          @click="toggleSidebar"
+        >
+          <PanelLeftOpen v-if="sidebarCollapsed" :size="17" />
+          <PanelLeftClose v-else :size="17" />
+        </button>
+      </div>
+
+      <div class="sidebar-caption">СООБЩЕСТВО</div>
+      <nav id="primary-navigation" class="main-nav" aria-label="Основная навигация">
+        <RouterLink
+          v-for="item in navigation"
+          :key="item.id"
+          :to="item.to"
+          class="nav-link"
+          :aria-label="item.label"
+          :title="sidebarCollapsed ? item.label : undefined"
+          active-class="is-active"
+        >
+          <component :is="item.icon" :size="18" :stroke-width="1.8" />
+          <span class="nav-label">{{ item.label }}</span>
+          <ArrowUpRight v-if="route.name === item.id" class="nav-arrow" :size="14" />
+        </RouterLink>
+      </nav>
+
+      <nav v-if="currentUser?.adminRole" class="admin-nav" aria-label="Администрирование">
+        <RouterLink
+          :to="adminPanelLink"
+          class="nav-link"
+          :class="{ 'is-active': route.path.startsWith('/adminpanel') }"
+          aria-label="Админ панель"
+          :title="sidebarCollapsed ? 'Админ панель' : undefined"
+        >
+          <ShieldCheck :size="18" :stroke-width="1.8" />
+          <span class="nav-label">Админ панель</span>
+        </RouterLink>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <button class="help-link" type="button" :aria-label="sidebarCollapsed ? 'Помощь' : undefined" :title="sidebarCollapsed ? 'Помощь' : undefined" @click="authMode = 'help'">
+          <CircleHelp :size="18" :stroke-width="1.8" />
+          <span class="help-label">Помощь</span>
+          <ArrowUpRight class="help-arrow" :size="14" />
+        </button>
+        <div class="sidebar-version" aria-label="MatchStrike CS"><span class="version-dot"></span><span class="sidebar-version-label">MATCHSTRIKE / CS</span></div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div class="topbar-label"><span class="topbar-mark"></span> ИГРОВОЕ СООБЩЕСТВО <span class="topbar-divider">/</span> CS</div>
+        <div class="topbar-actions">
+          <template v-if="!currentUser">
+            <button class="login-button" type="button" @click="openAuth('login')"><LogIn :size="16" /><span>Войти</span></button>
+            <button class="register-button" type="button" @click="openAuth('register')"><UserPlus :size="16" /><span>Регистрация</span></button>
+          </template>
+          <div v-else class="profile-wrap">
+            <button class="profile-button" type="button" :aria-expanded="profileMenuOpen" aria-haspopup="menu" @click="profileMenuOpen = !profileMenuOpen">
+              <img v-if="currentUser.avatarUrl" class="profile-avatar" :src="currentUser.avatarUrl" alt="" />
+              <span v-else class="profile-avatar profile-initials">{{ currentUser.initials }}</span>
+              <span class="profile-nickname">{{ currentUser.nickname }}</span>
+              <ChevronDown :size="15" />
+            </button>
+            <Transition name="account-menu">
+              <div v-if="profileMenuOpen" class="profile-menu" role="menu">
+                <RouterLink :to="profileLink" role="menuitem" @click="profileMenuOpen = false"><UserRound :size="15" /> Профиль <ArrowUpRight :size="14" /></RouterLink>
+                <RouterLink to="/friends" role="menuitem" @click="profileMenuOpen = false"><Users :size="15" /> Друзья <ArrowUpRight :size="14" /></RouterLink>
+                <RouterLink to="/settings" role="menuitem" @click="profileMenuOpen = false"><Settings :size="15" /> Настройки <ArrowUpRight :size="14" /></RouterLink>
+                <button type="button" role="menuitem" @click="signOut">Выйти</button>
+              </div>
+            </Transition>
+          </div>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <RouterView v-slot="{ Component, route: pageRoute }">
+          <Transition name="route" mode="out-in" appear>
+            <div :key="pageRoute.fullPath" class="route-page">
+              <component :is="Component" v-on="pageEventListeners" />
+            </div>
+          </Transition>
+        </RouterView>
+        <footer class="page-footer">
+          <span>© {{ new Date().getFullYear() }} MATCHSTRIKE</span>
+          <span><i></i> COUNTER-STRIKE COMMUNITY</span>
+        </footer>
+      </div>
+    </main>
+
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="authMode" class="modal-backdrop" @click.self="closeDialog()" @keydown.esc="closeDialog()">
+          <section class="info-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+          <button class="dialog-close" type="button" aria-label="Закрыть" @click="closeDialog()"><X :size="18" /></button>
+          <span class="dialog-mark"><Shield :size="22" /></span>
+          <div class="section-kicker">MATCHSTRIKE / ACCOUNT</div>
+          <h2 id="dialog-title">{{ authTitle }}</h2>
+          <p v-if="authMode === 'help'">{{ authDescription }}</p>
+          <div v-else-if="authMode === 'required'" class="auth-required">
+            <p>{{ authDescription }}</p>
+            <div class="dialog-actions">
+              <button class="dialog-secondary auth-choice" type="button" @click="openAuth('login')"><LogIn :size="14" /> Войти</button>
+              <button class="dialog-primary auth-choice" type="button" @click="openAuth('register')"><UserPlus :size="14" /> Зарегистрироваться</button>
+            </div>
+          </div>
+          <div v-else-if="authMode === 'privacy'" class="privacy-copy">
+            <p>Для работы аккаунта MatchStrike сохраняет email и никнейм. Пароль хранится только в виде криптографического хеша, а дата согласия с политикой — в записи аккаунта.</p>
+            <p>Эти данные используются для входа и работы функций сообщества. Перед публичным запуском владелец сайта должен дополнить политику своими реквизитами, контактами для запросов и правилами хранения данных.</p>
+            <div class="dialog-actions"><button class="dialog-secondary" type="button" @click="authMode = 'register'">Назад к регистрации</button></div>
+          </div>
+          <form v-else class="auth-form" @submit.prevent="submitAuth">
+            <label class="auth-field">
+              <span>Email</span>
+              <input v-model.trim="authForm.email" class="auth-input" type="email" name="email" autocomplete="email" required maxlength="254" placeholder="name@example.com" :aria-invalid="Boolean(fieldError('email'))" />
+              <span v-if="fieldError('email')" class="field-error">{{ fieldError('email') }}</span>
+              <button v-if="authMode === 'register' && hasEmailConflict" class="auth-inline-link" type="button" @click="switchToLogin">Войти в существующий аккаунт</button>
+            </label>
+
+            <label v-if="authMode === 'register'" class="auth-field">
+              <span>Никнейм</span>
+              <input v-model.trim="authForm.nickname" class="auth-input" type="text" name="nickname" autocomplete="nickname" required minlength="2" maxlength="32" pattern="[\p{L}\p{N}_!?#@]+" title="Только буквы, цифры и символы _ ! ? # @. Без пробелов и ссылок." placeholder="Ваш никнейм" :aria-invalid="Boolean(fieldError('nickname'))" />
+              <span v-if="fieldError('nickname')" class="field-error">{{ fieldError('nickname') }}</span>
+            </label>
+
+            <label v-if="authMode !== 'login' || !twoFactorRequired" class="auth-field">
+              <span>Пароль</span>
+              <input v-model="authForm.password" class="auth-input" type="password" name="password" :autocomplete="authMode === 'register' ? 'new-password' : 'current-password'" required minlength="8" placeholder="Не менее 8 символов" :aria-invalid="Boolean(fieldError('password'))" />
+              <span v-if="fieldError('password')" class="field-error">{{ fieldError('password') }}</span>
+            </label>
+
+            <label v-if="authMode === 'login' && twoFactorRequired" class="auth-field">
+              <span>Код Google Authenticator</span>
+              <input v-model.trim="authForm.two_factor_code" class="auth-input" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required placeholder="000000" :aria-invalid="Boolean(fieldError('two_factor_code'))" />
+              <span v-if="fieldError('two_factor_code')" class="field-error">{{ fieldError('two_factor_code') }}</span>
+            </label>
+
+            <label v-if="authMode === 'register'" class="auth-field">
+              <span>Подтвердить пароль</span>
+              <input v-model="authForm.password_confirmation" class="auth-input" type="password" name="password_confirmation" autocomplete="new-password" required minlength="8" placeholder="Повторите пароль" />
+            </label>
+
+            <div v-if="authMode === 'register'" class="privacy-consent">
+              <input id="privacy-accepted" v-model="authForm.privacy_accepted" type="checkbox" required />
+              <label for="privacy-accepted">Я принимаю</label>
+              <button class="auth-inline-link" type="button" @click="authMode = 'privacy'">Политику конфиденциальности</button>
+              <span v-if="fieldError('privacy_accepted')" class="field-error">{{ fieldError('privacy_accepted') }}</span>
+            </div>
+
+            <p v-if="authMessage" class="auth-message" role="alert">{{ authMessage }}</p>
+
+            <div class="dialog-actions">
+              <button class="dialog-secondary" type="button" @click="closeDialog()">Отмена</button>
+              <button class="dialog-primary" type="submit" :disabled="authBusy">
+                {{ authBusy ? 'Подождите…' : authMode === 'register' ? 'Создать аккаунт' : 'Войти' }}
+              </button>
+            </div>
+
+            <p class="auth-switch-row">
+              {{ authMode === 'login' ? 'Ещё нет аккаунта?' : 'Уже зарегистрированы?' }}
+              <button class="auth-inline-link" type="button" @click="authMode === 'login' ? openAuth('register') : switchToLogin()">
+                {{ authMode === 'login' ? 'Регистрация' : 'Войти' }}
+              </button>
+            </p>
+          </form>
+          <div v-if="authMode === 'help'" class="dialog-actions"><button class="dialog-secondary" type="button" @click="closeDialog()">Закрыть</button></div>
+          </section>
+        </div>
+      </Transition>
+    </Teleport>
+  </div>
+</template>
