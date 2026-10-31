@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  ArrowLeft,
   Activity,
   ArrowUpRight,
   Ban,
@@ -9,11 +10,14 @@ import {
   CircleHelp,
   Gamepad2,
   LogIn,
+  Menu,
+  Moon,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
   Shield,
   ShieldCheck,
+  Sun,
   UserPlus,
   UserRound,
   Users,
@@ -35,15 +39,26 @@ interface Account {
 
 const route = useRoute()
 const router = useRouter()
+const darkTheme = ref(document.documentElement.classList.contains('dark'))
 const authMode = ref<AuthMode>(null)
 const currentUser = ref<Account | null>(null)
 const sidebarCollapsed = ref(false)
+const mobileMenuOpen = ref(false)
+const mobileMenuToggle = ref<HTMLButtonElement | null>(null)
+const mobileMenuClose = ref<HTMLButtonElement | null>(null)
+const sidebar = ref<HTMLElement | null>(null)
 const authRedirect = ref<string | null>(null)
 const profileMenuOpen = ref(false)
+const profileWrap = ref<HTMLElement | null>(null)
 const authBusy = ref(false)
 const authMessage = ref('')
 const authErrors = ref<Record<string, string[]>>({})
 const twoFactorRequired = ref(false)
+const twoFactorDigits = ref(['', '', '', '', '', ''])
+const twoFactorInputs = ref<(HTMLInputElement | null)[]>([])
+const twoFactorPositions = [0, 1, 2, 3, 4, 5] as const
+const authPasswordInput = ref<HTMLInputElement | null>(null)
+const focusPasswordOnCredentialsEnter = ref(false)
 const authForm = reactive({
   email: '',
   nickname: '',
@@ -54,6 +69,16 @@ const authForm = reactive({
 })
 const activityEvents = ['pointerdown', 'keydown', 'scroll', 'touchstart'] as const
 let lastSessionRefreshAt = 0
+
+function toggleTheme() {
+  darkTheme.value = !darkTheme.value
+  document.documentElement.classList.toggle('dark', darkTheme.value)
+  try {
+    localStorage.setItem('matchstrike.theme', darkTheme.value ? 'dark' : 'light')
+  } catch {
+    return
+  }
+}
 
 function sidebarPreferenceKey(userId: number | null): string {
   return userId === null ? 'matchstrike.sidebar.guest' : `matchstrike.sidebar.user.${userId}`
@@ -70,6 +95,54 @@ function readSidebarPreference(userId: number | null): boolean {
 watch(currentUser, (user) => {
   sidebarCollapsed.value = readSidebarPreference(user?.id ?? null)
 }, { immediate: true })
+
+watch(() => route.fullPath, () => {
+  closeMobileMenu(false)
+})
+
+function openMobileMenu() {
+  mobileMenuOpen.value = true
+  void nextTick(() => {
+    if (mobileMenuOpen.value) mobileMenuClose.value?.focus()
+  })
+}
+
+function closeMobileMenu(restoreFocus = true) {
+  if (!mobileMenuOpen.value) return
+  mobileMenuOpen.value = false
+  if (restoreFocus) void nextTick(() => mobileMenuToggle.value?.focus())
+}
+
+function handleMobileMenuKeydown(event: KeyboardEvent) {
+  if (!mobileMenuOpen.value) return
+  if (event.key === 'Escape') {
+    closeMobileMenu()
+    return
+  }
+  if (event.key !== 'Tab' || !sidebar.value) return
+  const focusable = Array.from(sidebar.value.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+    .filter((element) => element.getClientRects().length > 0)
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  if (!first || !last) return
+  if (event.shiftKey && (document.activeElement === first || !sidebar.value.contains(document.activeElement))) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && (document.activeElement === last || !sidebar.value.contains(document.activeElement))) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+
+function closeMobileMenuOnResize() {
+  if (window.matchMedia('(min-width: 721px)').matches) closeMobileMenu(false)
+}
+
+function closeProfileMenuOnOutsideClick(event: PointerEvent) {
+  if (profileMenuOpen.value && event.target instanceof Node && !profileWrap.value?.contains(event.target)) {
+    profileMenuOpen.value = false
+  }
+}
 
 function toggleSidebar() {
   sidebarCollapsed.value = !sidebarCollapsed.value
@@ -98,6 +171,7 @@ const adminPanelLink = computed(() => currentUser.value?.adminRole
 
 const authTitle = computed(() => {
   if (authMode.value === 'register') return 'Создать аккаунт'
+  if (authMode.value === 'login' && twoFactorRequired.value) return 'Подтверждение входа'
   if (authMode.value === 'help') return 'Помощь'
   if (authMode.value === 'privacy') return 'Политика конфиденциальности'
   if (authMode.value === 'required') return 'Вы не авторизованы'
@@ -153,6 +227,8 @@ function openAuth(mode: Exclude<AuthMode, 'help' | 'privacy' | null>) {
     password_confirmation: '',
     privacy_accepted: false,
   })
+  clearTwoFactorCode()
+  focusPasswordOnCredentialsEnter.value = false
   authMode.value = mode
 }
 
@@ -172,6 +248,8 @@ function closeDialog(clearAuthQuery = true) {
   authErrors.value = {}
   authMessage.value = ''
   twoFactorRequired.value = false
+  clearTwoFactorCode()
+  focusPasswordOnCredentialsEnter.value = false
   authRedirect.value = null
   if (shouldClearAuthQuery) void router.replace({ name: 'home' })
 }
@@ -184,6 +262,91 @@ function switchToLogin() {
 
 function fieldError(field: string): string {
   return authErrors.value[field]?.[0] ?? ''
+}
+
+function clearTwoFactorCode() {
+  twoFactorDigits.value = ['', '', '', '', '', '']
+  twoFactorInputs.value = []
+  authForm.two_factor_code = ''
+}
+
+function setTwoFactorInput(index: number, element: unknown) {
+  twoFactorInputs.value[index] = element instanceof HTMLInputElement ? element : null
+}
+
+function setTwoFactorDigits(digits: string[]) {
+  twoFactorDigits.value = digits
+  authForm.two_factor_code = digits.join('')
+}
+
+function handleTwoFactorInput(index: number, event: Event) {
+  const input = event.target as HTMLInputElement
+  const enteredDigits = input.value.replace(/\D/g, '').slice(0, 6 - index)
+  const digits = [...twoFactorDigits.value]
+
+  if (enteredDigits.length > 1) {
+    for (let offset = 0; offset < enteredDigits.length; offset += 1) {
+      digits[index + offset] = enteredDigits[offset]
+    }
+  } else {
+    digits[index] = enteredDigits
+  }
+
+  setTwoFactorDigits(digits)
+  input.value = digits[index] ?? ''
+
+  if (enteredDigits) {
+    const nextIndex = Math.min(index + Math.max(enteredDigits.length, 1), twoFactorPositions.length - 1)
+    twoFactorInputs.value[nextIndex]?.focus()
+  }
+}
+
+function handleTwoFactorKeydown(index: number, event: KeyboardEvent) {
+  if (event.key === 'ArrowLeft' && index > 0) {
+    event.preventDefault()
+    twoFactorInputs.value[index - 1]?.focus()
+    return
+  }
+
+  if (event.key === 'ArrowRight' && index < twoFactorPositions.length - 1) {
+    event.preventDefault()
+    twoFactorInputs.value[index + 1]?.focus()
+    return
+  }
+
+  if (event.key === 'Backspace' && !twoFactorDigits.value[index] && index > 0) {
+    const digits = [...twoFactorDigits.value]
+    digits[index - 1] = ''
+    setTwoFactorDigits(digits)
+    event.preventDefault()
+    twoFactorInputs.value[index - 1]?.focus()
+  }
+}
+
+function focusFirstTwoFactorInput() {
+  twoFactorInputs.value[0]?.focus()
+}
+
+function focusAuthStep() {
+  if (twoFactorRequired.value) {
+    focusFirstTwoFactorInput()
+    return
+  }
+
+  if (focusPasswordOnCredentialsEnter.value) {
+    focusPasswordOnCredentialsEnter.value = false
+    authPasswordInput.value?.focus()
+  }
+}
+
+function backToCredentials() {
+  if (authBusy.value) return
+
+  focusPasswordOnCredentialsEnter.value = true
+  twoFactorRequired.value = false
+  authErrors.value = {}
+  authMessage.value = ''
+  clearTwoFactorCode()
 }
 
 async function submitAuth() {
@@ -214,6 +377,7 @@ async function submitAuth() {
       const response = await loginAccount(payload)
       if (response.requiresTwoFactor) {
         twoFactorRequired.value = true
+        clearTwoFactorCode()
         return
       }
       if (!response.user) throw new Error('Вход не завершён.')
@@ -270,6 +434,9 @@ function refreshSessionOnActivity() {
 }
 
 onMounted(async () => {
+  document.addEventListener('pointerdown', closeProfileMenuOnOutsideClick)
+  window.addEventListener('keydown', handleMobileMenuKeydown)
+  window.addEventListener('resize', closeMobileMenuOnResize)
   for (const eventName of activityEvents) {
     window.addEventListener(eventName, refreshSessionOnActivity, { passive: true })
   }
@@ -286,6 +453,9 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', closeProfileMenuOnOutsideClick)
+  window.removeEventListener('keydown', handleMobileMenuKeydown)
+  window.removeEventListener('resize', closeMobileMenuOnResize)
   for (const eventName of activityEvents) {
     window.removeEventListener(eventName, refreshSessionOnActivity)
   }
@@ -293,10 +463,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div id="top" class="site-shell" :class="{ 'is-sidebar-collapsed': sidebarCollapsed }">
-    <aside class="sidebar">
+  <div id="top" class="site-shell" :class="{ 'is-sidebar-collapsed': sidebarCollapsed, 'is-mobile-menu-open': mobileMenuOpen }">
+    <button v-if="mobileMenuOpen" class="mobile-menu-backdrop" type="button" tabindex="-1" aria-label="Закрыть меню" @click="closeMobileMenu()"></button>
+    <aside id="site-sidebar" ref="sidebar" class="sidebar" :role="mobileMenuOpen ? 'dialog' : undefined" :aria-modal="mobileMenuOpen ? 'true' : undefined" :aria-label="mobileMenuOpen ? 'Навигация' : undefined">
       <div class="sidebar-brand">
-        <RouterLink class="brand" to="/" aria-label="MatchStrike — главная">
+        <RouterLink class="brand" to="/" aria-label="MatchStrike — главная" @click="closeMobileMenu(false)">
           <span class="brand-mark"><Shield :size="19" :stroke-width="2.2" /></span>
           <span class="brand-name">MATCH<span>STRIKE</span><small>CS COMMUNITY</small></span>
         </RouterLink>
@@ -312,6 +483,7 @@ onBeforeUnmount(() => {
           <PanelLeftOpen v-if="sidebarCollapsed" :size="17" />
           <PanelLeftClose v-else :size="17" />
         </button>
+        <button ref="mobileMenuClose" class="mobile-menu-close" type="button" aria-label="Закрыть меню" title="Закрыть меню" @click="closeMobileMenu()"><X :size="20" /></button>
       </div>
 
       <div class="sidebar-caption">СООБЩЕСТВО</div>
@@ -324,6 +496,7 @@ onBeforeUnmount(() => {
           :aria-label="item.label"
           :title="sidebarCollapsed ? item.label : undefined"
           active-class="is-active"
+          @click="closeMobileMenu(false)"
         >
           <component :is="item.icon" :size="18" :stroke-width="1.8" />
           <span class="nav-label">{{ item.label }}</span>
@@ -338,6 +511,7 @@ onBeforeUnmount(() => {
           :class="{ 'is-active': route.path.startsWith('/adminpanel') }"
           aria-label="Админ панель"
           :title="sidebarCollapsed ? 'Админ панель' : undefined"
+          @click="closeMobileMenu(false)"
         >
           <ShieldCheck :size="18" :stroke-width="1.8" />
           <span class="nav-label">Админ панель</span>
@@ -345,7 +519,7 @@ onBeforeUnmount(() => {
       </nav>
 
       <div class="sidebar-bottom">
-        <button class="help-link" type="button" :aria-label="sidebarCollapsed ? 'Помощь' : undefined" :title="sidebarCollapsed ? 'Помощь' : undefined" @click="authMode = 'help'">
+        <button class="help-link" type="button" :aria-label="sidebarCollapsed ? 'Помощь' : undefined" :title="sidebarCollapsed ? 'Помощь' : undefined" @click="closeMobileMenu(false); authMode = 'help'">
           <CircleHelp :size="18" :stroke-width="1.8" />
           <span class="help-label">Помощь</span>
           <ArrowUpRight class="help-arrow" :size="14" />
@@ -356,13 +530,28 @@ onBeforeUnmount(() => {
 
     <main class="main-content">
       <header class="topbar">
+        <div class="mobile-header">
+          <button ref="mobileMenuToggle" class="mobile-menu-toggle" type="button" :aria-expanded="mobileMenuOpen" aria-controls="site-sidebar" aria-label="Открыть меню" title="Открыть меню" @click="openMobileMenu"><Menu :size="21" /></button>
+          <RouterLink class="mobile-header-brand" to="/" aria-label="MatchStrike — главная"><span class="brand-mark"><Shield :size="17" :stroke-width="2.2" /></span><span>Match<span>Strike</span></span></RouterLink>
+        </div>
         <div class="topbar-label"><span class="topbar-mark"></span> ИГРОВОЕ СООБЩЕСТВО <span class="topbar-divider">/</span> CS</div>
         <div class="topbar-actions">
+          <button
+            class="theme-toggle flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-sky-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            type="button"
+            :aria-label="darkTheme ? 'Включить светлую тему' : 'Включить тёмную тему'"
+            :title="darkTheme ? 'Включить светлую тему' : 'Включить тёмную тему'"
+            :aria-pressed="darkTheme"
+            @click="toggleTheme"
+          >
+            <Sun v-if="darkTheme" :size="17" />
+            <Moon v-else :size="17" />
+          </button>
           <template v-if="!currentUser">
             <button class="login-button" type="button" @click="openAuth('login')"><LogIn :size="16" /><span>Войти</span></button>
             <button class="register-button" type="button" @click="openAuth('register')"><UserPlus :size="16" /><span>Регистрация</span></button>
           </template>
-          <div v-else class="profile-wrap">
+          <div v-else ref="profileWrap" class="profile-wrap">
             <button class="profile-button" type="button" :aria-expanded="profileMenuOpen" aria-haspopup="menu" @click="profileMenuOpen = !profileMenuOpen">
               <img v-if="currentUser.avatarUrl" class="profile-avatar" :src="currentUser.avatarUrl" alt="" />
               <span v-else class="profile-avatar profile-initials">{{ currentUser.initials }}</span>
@@ -399,9 +588,9 @@ onBeforeUnmount(() => {
     <Teleport to="body">
       <Transition name="modal">
         <div v-if="authMode" class="modal-backdrop" @click.self="closeDialog()" @keydown.esc="closeDialog()">
-          <section class="info-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+          <section class="info-dialog" :class="{ 'auth-two-factor-dialog': authMode === 'login' && twoFactorRequired }" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+          <button v-if="authMode === 'login' && twoFactorRequired" class="dialog-close auth-step-back" type="button" aria-label="Назад к email и паролю" title="Назад к email и паролю" @click="backToCredentials"><ArrowLeft :size="18" /></button>
           <button class="dialog-close" type="button" aria-label="Закрыть" @click="closeDialog()"><X :size="18" /></button>
-          <span class="dialog-mark"><Shield :size="22" /></span>
           <div class="section-kicker">MATCHSTRIKE / ACCOUNT</div>
           <h2 id="dialog-title">{{ authTitle }}</h2>
           <p v-if="authMode === 'help'">{{ authDescription }}</p>
@@ -418,53 +607,76 @@ onBeforeUnmount(() => {
             <div class="dialog-actions"><button class="dialog-secondary" type="button" @click="authMode = 'register'">Назад к регистрации</button></div>
           </div>
           <form v-else class="auth-form" @submit.prevent="submitAuth">
-            <label class="auth-field">
-              <span>Email</span>
-              <input v-model.trim="authForm.email" class="auth-input" type="email" name="email" autocomplete="email" required maxlength="254" placeholder="name@example.com" :aria-invalid="Boolean(fieldError('email'))" />
-              <span v-if="fieldError('email')" class="field-error">{{ fieldError('email') }}</span>
-              <button v-if="authMode === 'register' && hasEmailConflict" class="auth-inline-link" type="button" @click="switchToLogin">Войти в существующий аккаунт</button>
-            </label>
+            <Transition name="auth-step" mode="out-in" @after-enter="focusAuthStep">
+              <div v-if="authMode === 'login' && twoFactorRequired" key="two-factor" class="auth-two-factor">
+                <p class="auth-two-factor-copy">Введите шестизначный код из Google Authenticator.</p>
+                <label class="auth-field">
+                  <span>Код подтверждения</span>
+                  <div class="auth-code-inputs" role="group" aria-label="Шестизначный код Google Authenticator">
+                    <input
+                      v-for="index in twoFactorPositions"
+                      :key="index"
+                      :ref="(element) => setTwoFactorInput(index, element)"
+                      class="auth-input auth-code-input"
+                      type="text"
+                      inputmode="numeric"
+                      :autocomplete="index === 0 ? 'one-time-code' : 'off'"
+                      :value="twoFactorDigits[index]"
+                      :aria-label="`Цифра ${index + 1} из 6`"
+                      :aria-invalid="Boolean(fieldError('two_factor_code'))"
+                      :maxlength="6"
+                      required
+                      @input="handleTwoFactorInput(index, $event)"
+                      @keydown="handleTwoFactorKeydown(index, $event)"
+                    />
+                  </div>
+                  <span v-if="fieldError('two_factor_code')" class="field-error">{{ fieldError('two_factor_code') }}</span>
+                </label>
+              </div>
+              <div v-else key="credentials" class="auth-credentials">
+                <label class="auth-field">
+                  <span>Email</span>
+                  <input v-model.trim="authForm.email" class="auth-input" type="email" name="email" autocomplete="email" required maxlength="254" placeholder="name@example.com" :aria-invalid="Boolean(fieldError('email'))" />
+                  <span v-if="fieldError('email')" class="field-error">{{ fieldError('email') }}</span>
+                  <button v-if="authMode === 'register' && hasEmailConflict" class="auth-inline-link" type="button" @click="switchToLogin">Войти в существующий аккаунт</button>
+                </label>
 
-            <label v-if="authMode === 'register'" class="auth-field">
-              <span>Никнейм</span>
-              <input v-model.trim="authForm.nickname" class="auth-input" type="text" name="nickname" autocomplete="nickname" required minlength="2" maxlength="32" pattern="[\p{L}\p{N}_!?#@]+" title="Только буквы, цифры и символы _ ! ? # @. Без пробелов и ссылок." placeholder="Ваш никнейм" :aria-invalid="Boolean(fieldError('nickname'))" />
-              <span v-if="fieldError('nickname')" class="field-error">{{ fieldError('nickname') }}</span>
-            </label>
+                <label v-if="authMode === 'register'" class="auth-field">
+                  <span>Никнейм</span>
+                  <input v-model.trim="authForm.nickname" class="auth-input" type="text" name="nickname" autocomplete="nickname" required minlength="2" maxlength="32" pattern="[\p{L}\p{N}_!?#@]+" title="Только буквы, цифры и символы _ ! ? # @. Без пробелов и ссылок." placeholder="Ваш никнейм" :aria-invalid="Boolean(fieldError('nickname'))" />
+                  <span v-if="fieldError('nickname')" class="field-error">{{ fieldError('nickname') }}</span>
+                </label>
 
-            <label v-if="authMode !== 'login' || !twoFactorRequired" class="auth-field">
-              <span>Пароль</span>
-              <input v-model="authForm.password" class="auth-input" type="password" name="password" :autocomplete="authMode === 'register' ? 'new-password' : 'current-password'" required minlength="8" placeholder="Не менее 8 символов" :aria-invalid="Boolean(fieldError('password'))" />
-              <span v-if="fieldError('password')" class="field-error">{{ fieldError('password') }}</span>
-            </label>
+                <label v-if="authMode !== 'login' || !twoFactorRequired" class="auth-field">
+                  <span>Пароль</span>
+                  <input ref="authPasswordInput" v-model="authForm.password" class="auth-input" type="password" name="password" :autocomplete="authMode === 'register' ? 'new-password' : 'current-password'" required minlength="8" placeholder="Не менее 8 символов" :aria-invalid="Boolean(fieldError('password'))" />
+                  <span v-if="fieldError('password')" class="field-error">{{ fieldError('password') }}</span>
+                </label>
 
-            <label v-if="authMode === 'login' && twoFactorRequired" class="auth-field">
-              <span>Код Google Authenticator</span>
-              <input v-model.trim="authForm.two_factor_code" class="auth-input" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required placeholder="000000" :aria-invalid="Boolean(fieldError('two_factor_code'))" />
-              <span v-if="fieldError('two_factor_code')" class="field-error">{{ fieldError('two_factor_code') }}</span>
-            </label>
+                <label v-if="authMode === 'register'" class="auth-field">
+                  <span>Подтвердить пароль</span>
+                  <input v-model="authForm.password_confirmation" class="auth-input" type="password" name="password_confirmation" autocomplete="new-password" required minlength="8" placeholder="Повторите пароль" />
+                </label>
 
-            <label v-if="authMode === 'register'" class="auth-field">
-              <span>Подтвердить пароль</span>
-              <input v-model="authForm.password_confirmation" class="auth-input" type="password" name="password_confirmation" autocomplete="new-password" required minlength="8" placeholder="Повторите пароль" />
-            </label>
-
-            <div v-if="authMode === 'register'" class="privacy-consent">
-              <input id="privacy-accepted" v-model="authForm.privacy_accepted" type="checkbox" required />
-              <label for="privacy-accepted">Я принимаю</label>
-              <button class="auth-inline-link" type="button" @click="authMode = 'privacy'">Политику конфиденциальности</button>
-              <span v-if="fieldError('privacy_accepted')" class="field-error">{{ fieldError('privacy_accepted') }}</span>
-            </div>
+                <div v-if="authMode === 'register'" class="privacy-consent">
+                  <input id="privacy-accepted" v-model="authForm.privacy_accepted" type="checkbox" required />
+                  <label for="privacy-accepted">Я принимаю</label>
+                  <button class="auth-inline-link" type="button" @click="authMode = 'privacy'">Политику конфиденциальности</button>
+                  <span v-if="fieldError('privacy_accepted')" class="field-error">{{ fieldError('privacy_accepted') }}</span>
+                </div>
+              </div>
+            </Transition>
 
             <p v-if="authMessage" class="auth-message" role="alert">{{ authMessage }}</p>
 
             <div class="dialog-actions">
               <button class="dialog-secondary" type="button" @click="closeDialog()">Отмена</button>
-              <button class="dialog-primary" type="submit" :disabled="authBusy">
-                {{ authBusy ? 'Подождите…' : authMode === 'register' ? 'Создать аккаунт' : 'Войти' }}
+              <button class="dialog-primary" type="submit" :disabled="authBusy || (twoFactorRequired && authForm.two_factor_code.length !== 6)">
+                {{ authBusy ? 'Проверяем…' : authMode === 'register' ? 'Создать аккаунт' : twoFactorRequired ? 'Подтвердить' : 'Войти' }}
               </button>
             </div>
 
-            <p class="auth-switch-row">
+            <p v-if="!twoFactorRequired" class="auth-switch-row">
               {{ authMode === 'login' ? 'Ещё нет аккаунта?' : 'Уже зарегистрированы?' }}
               <button class="auth-inline-link" type="button" @click="authMode === 'login' ? openAuth('register') : switchToLogin()">
                 {{ authMode === 'login' ? 'Регистрация' : 'Войти' }}

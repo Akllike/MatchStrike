@@ -250,7 +250,7 @@ watch(nickname, loadProfile, { immediate: true })
         </template>
       </div>
       <div class="profile-identity-row">
-        <div class="profile-avatar-large-wrap" :class="{ 'is-blocked': profile.isBlocked }">
+        <div class="profile-avatar-large-wrap" :class="{ 'is-blocked': profile.isBlocked, 'has-avatar': profile.avatarUrl }">
           <img v-if="profile.avatarUrl" class="profile-avatar-large" :src="profile.avatarUrl" alt="" />
           <span v-else class="profile-avatar-large profile-avatar-fallback">{{ profile.nickname.slice(0, 1).toUpperCase() }}</span>
           <template v-if="profile.isOwn">

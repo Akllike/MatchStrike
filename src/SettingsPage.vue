@@ -27,6 +27,11 @@ const emit = defineEmits<{
 type SettingsTab = 'general' | 'security'
 type MediaField = 'avatar' | 'cover'
 
+const mediaSpecs: Record<MediaField, { maxBytes: number; maxWidth: number; maxHeight: number; maxSize: string }> = {
+  avatar: { maxBytes: 5 * 1024 * 1024, maxWidth: 2048, maxHeight: 2048, maxSize: '5 МБ' },
+  cover: { maxBytes: 8 * 1024 * 1024, maxWidth: 4096, maxHeight: 1365, maxSize: '8 МБ' },
+}
+
 const account = ref<AuthUser | null>(null)
 const loading = ref(true)
 const activeTab = ref<SettingsTab>('general')
@@ -169,6 +174,43 @@ async function savePassword() {
   }
 }
 
+function imageDimensions(file: File): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    const objectUrl = URL.createObjectURL(file)
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl)
+      resolve({ width: image.naturalWidth, height: image.naturalHeight })
+    }
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl)
+      reject(new Error('Не удалось прочитать изображение.'))
+    }
+    image.src = objectUrl
+  })
+}
+
+async function validateMediaFile(file: File, field: MediaField): Promise<string | null> {
+  const spec = mediaSpecs[field]
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+    return 'Выберите изображение в формате JPG, PNG или WebP.'
+  }
+  if (file.size > spec.maxBytes) {
+    return `Размер файла не должен превышать ${spec.maxSize}.`
+  }
+
+  try {
+    const dimensions = await imageDimensions(file)
+    if (dimensions.width > spec.maxWidth || dimensions.height > spec.maxHeight) {
+      return `Максимальное разрешение: ${spec.maxWidth} × ${spec.maxHeight} px.`
+    }
+  } catch {
+    return 'Не удалось прочитать изображение.'
+  }
+
+  return null
+}
+
 async function uploadMedia(field: MediaField, event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -179,13 +221,21 @@ async function uploadMedia(field: MediaField, event: Event) {
   mediaMessage.value = ''
   mediaError.value = ''
   try {
+    const validationError = await validateMediaFile(file, field)
+    if (validationError) {
+      mediaError.value = validationError
+      return
+    }
+
     const user = field === 'avatar'
       ? await updateProfileMedia({ avatar: file })
       : await updateProfileMedia({ cover: file })
     applyAccount(user)
     mediaMessage.value = field === 'avatar' ? 'Аватар обновлён.' : 'Шапка профиля обновлена.'
   } catch (error) {
-    mediaError.value = error instanceof Error ? error.message : 'Не удалось загрузить изображение.'
+    mediaError.value = error instanceof ApiRequestError
+      ? Object.values(error.errors).flat()[0] ?? error.message
+      : error instanceof Error ? error.message : 'Не удалось загрузить изображение.'
   } finally {
     mediaBusy.value = null
   }

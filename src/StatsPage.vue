@@ -1,43 +1,34 @@
 <script setup lang="ts">
-import { Activity, ChevronLeft, ChevronRight } from '@lucide/vue'
-import { onMounted, ref } from 'vue'
+import { Activity, ChevronLeft, ChevronRight, Search, X } from '@lucide/vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getStatsPlayers } from './api'
 import type { StatsPlayer } from './api'
 
 const players = ref<StatsPlayer[]>([])
+const searchQuery = ref('')
 const currentPage = ref(1)
 const lastPage = ref(1)
 const totalPlayers = ref(0)
-const updatedAt = ref<string | null>(null)
 const playersLoading = ref(false)
 let playerRequestId = 0
+let searchTimer: number | null = null
 
-function formattedDate(value: string | null): string {
-  if (!value) return 'Нет данных об обновлении'
-  const timestamp = Date.parse(value)
-  return Number.isFinite(timestamp)
-    ? `Обновлено ${new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short' }).format(timestamp)}`
-    : 'Время обновления неизвестно'
-}
-
-async function loadStats(page = currentPage.value) {
+async function loadStats(page = currentPage.value, search = searchQuery.value) {
   const requestId = ++playerRequestId
   playersLoading.value = true
 
   try {
-    const result = await getStatsPlayers(page)
+    const result = await getStatsPlayers(page, search)
     if (requestId !== playerRequestId) return
 
     players.value = result.players
     currentPage.value = result.pagination.currentPage
     lastPage.value = result.pagination.lastPage
     totalPlayers.value = result.pagination.total
-    updatedAt.value = result.updatedAt
   } catch {
     if (requestId === playerRequestId) {
       players.value = []
       totalPlayers.value = 0
-      updatedAt.value = null
     }
   } finally {
     if (requestId === playerRequestId) playersLoading.value = false
@@ -49,7 +40,20 @@ function changePage(page: number) {
   void loadStats(page)
 }
 
+watch(searchQuery, (search) => {
+  if (searchTimer !== null) window.clearTimeout(searchTimer)
+  const requestId = ++playerRequestId
+  playersLoading.value = true
+  searchTimer = window.setTimeout(() => {
+    searchTimer = null
+    if (requestId === playerRequestId) void loadStats(1, search.trim())
+  }, 250)
+})
+
 onMounted(() => void loadStats())
+onBeforeUnmount(() => {
+  if (searchTimer !== null) window.clearTimeout(searchTimer)
+})
 </script>
 
 <template>
@@ -68,11 +72,16 @@ onMounted(() => void loadStats())
       <span v-if="players.length" class="section-count">{{ totalPlayers.toString().padStart(2, '0') }} <span>ИГРОКОВ</span></span>
     </div>
 
-    <div v-if="players.length" class="stats-toolbar">
-      <span class="stats-updated">{{ formattedDate(updatedAt) }}</span>
+    <div class="stats-toolbar">
+      <label class="stats-search">
+        <Search class="stats-search-icon" :size="16" aria-hidden="true" />
+        <input v-model="searchQuery" class="auth-input stats-search-input" type="search" maxlength="100" autocomplete="off" aria-label="Поиск игроков по никнейму или Steam ID" placeholder="Поиск по никнейму или Steam ID" />
+        <button v-if="searchQuery" class="stats-search-clear" type="button" aria-label="Очистить поиск" title="Очистить поиск" @click="searchQuery = ''"><X :size="16" /></button>
+      </label>
+      <span v-if="playersLoading" class="stats-updated" role="status" aria-live="polite">{{ searchQuery.trim() ? 'Ищем игроков…' : 'Загружаем статистику…' }}</span>
     </div>
 
-    <p v-if="!players.length" class="stats-no-data">Нет данных</p>
+    <p v-if="!players.length" class="stats-no-data" role="status">{{ playersLoading ? 'Загрузка результатов…' : (searchQuery.trim() ? 'Игроки не найдены' : 'Нет данных') }}</p>
     <div v-else class="player-stats-wrap">
       <table class="player-stats-table stats-player-table">
         <thead>

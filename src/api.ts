@@ -593,8 +593,10 @@ export async function getPublicServers(): Promise<PublicGameServer[]> {
   return data.servers
 }
 
-export async function getStatsPlayers(page = 1): Promise<StatsPlayersPage> {
-  const response = await fetch(`${apiBaseUrl}/stats/players?page=${page}`, {
+export async function getStatsPlayers(page = 1, search = ''): Promise<StatsPlayersPage> {
+  const params = new URLSearchParams({ page: String(page) })
+  if (search.trim()) params.set('search', search.trim())
+  const response = await fetch(`${apiBaseUrl}/stats/players?${params.toString()}`, {
     headers: { Accept: 'application/json' },
   })
   return readJson<StatsPlayersPage>(response)

@@ -1,0 +1,390 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Onest:wght@400;500;600;700&display=swap');
+@reference 'tailwindcss';
+
+:root {
+  font-family: 'Onest', sans-serif;
+  color: #172436;
+  background: #f8fafc;
+  --bg: #f8fafc;
+  --sidebar: #ffffff;
+  --panel: #ffffff;
+  --line: #e2e8f0;
+  --line-soft: #edf1f5;
+  --text: #172436;
+  --muted: #64748b;
+  --subtle: #8190a3;
+  --yellow: #0284c7;
+  --yellow-dim: #0369a1;
+  --surface-tint: #f0f9ff;
+  --shadow-soft: 0 10px 28px -12px rgba(15, 23, 42, .18), 0 2px 8px -3px rgba(15, 23, 42, .08);
+}
+
+body { background: linear-gradient(145deg, #f8fafc 0%, #fff 58%, #f0fdfa 100%); }
+body::before { display: none; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid #38bdf8; outline-offset: 3px; }
+
+.sidebar { background: rgba(255,255,255,.92); border-color: var(--line); }
+.brand-mark { color: #fff; background: linear-gradient(145deg, #0ea5e9, #0284c7); box-shadow: 0 5px 12px rgba(14,165,233,.2); }
+.brand-name, h1, .info-dialog h2, .profile-title-group h1 { font-family: 'IBM Plex Sans', sans-serif; letter-spacing: 0; }
+.brand-name { color: #142638; font-size: 15px; line-height: 1.05; }
+.brand-name small { color: #94a3b8; font-family: 'Onest', sans-serif; font-size: 8px; letter-spacing: 0; }
+.sidebar-caption, .sidebar-version, .topbar-label, .eyebrow, .section-kicker, .section-count span, .page-footer { letter-spacing: 0; }
+.sidebar-caption { color: #94a3b8; font-size: 10px; }
+.nav-link, .help-link { @apply rounded-md text-slate-600; font-size: 13px; }
+.nav-link:hover, .help-link:hover, .sidebar-collapse-toggle:hover { color: #0369a1; background: #f0f9ff; border-color: transparent; }
+.nav-link.is-active { color: #0369a1; background: #eaf7fe; border-color: #d7effb; }
+.nav-link.is-active::before { background: #0ea5e9; }
+.sidebar-collapse-toggle, .nav-arrow, .help-arrow { color: #94a3b8; }
+.version-dot { background: #14b8a6; box-shadow: 0 0 0 3px #ccfbf1; }
+.topbar { background: rgba(255,255,255,.86); border-color: var(--line); }
+.topbar-label { color: #64748b; font-size: 11px; }
+.topbar-mark { background: #14b8a6; }
+.topbar-divider { color: #cbd5e1; }
+.login-button, .register-button { @apply rounded-md text-xs; height: 38px; }
+.login-button { @apply bg-white text-slate-700; }
+.login-button:hover { color: #0369a1; border-color: #bae6fd; background: #f0f9ff; }
+.register-button, .dialog-primary, .profile-friend-button { color: #fff; border-color: #0284c7; background: #0284c7; box-shadow: 0 4px 10px rgba(2,132,199,.16); }
+.register-button:hover, .dialog-primary:hover:not(:disabled), .profile-friend-button:hover:not(:disabled) { color: #fff; border-color: #0369a1; background: #0369a1; }
+.profile-button:hover, .profile-button[aria-expanded='true'] { background: #f1f5f9; }
+.profile-initials, .avatar-edit-button { color: #fff; background: #0284c7; }
+.profile-menu, .info-dialog { color: var(--text); border-color: var(--line); background: #fff; box-shadow: 0 18px 50px rgba(15,23,42,.16); }
+.profile-menu a, .profile-menu button { color: #475569; font-size: 12px; }
+.profile-menu a:hover, .profile-menu button:hover { color: #0369a1; background: #f0f9ff; }
+
+.page-content { max-width: 1440px; }
+.welcome-section { min-height: 208px; border-color: var(--line); }
+.welcome-section::after { background: linear-gradient(transparent, #dceaf2, transparent); }
+.route-intro { min-height: 168px; }
+.welcome-copy h1 { color: #172436; font-size: 48px; line-height: 1.1; }
+.welcome-copy h1 span { color: #0284c7; }
+.welcome-copy > p { max-width: 500px; color: #64748b; font-size: 14px; line-height: 1.7; }
+.eyebrow, .section-kicker { color: #64748b; font-size: 10px; }
+.eyebrow-line { background: #0ea5e9; }
+.welcome-stamp, .route-intro-mark { border-color: #cceaf9; color: #0284c7; background: linear-gradient(135deg, #f0f9ff, #f0fdfa); }
+.welcome-stamp::before, .welcome-stamp::after, .route-intro-mark::after { border-color: #d9eaf2; }
+.stamp-top, .stamp-bottom { color: #64748b; letter-spacing: 0; }
+.panel-heading h2, .section-heading h2 { color: #172436; font-size: 17px; font-weight: 700; }
+.panel-index, .stat-number, .server-number, .match-number { color: #94a3b8; font-family: 'Onest', sans-serif; }
+.section-count { color: #0284c7; font-family: 'Onest', sans-serif; }
+.section-count span { color: #94a3b8; font-family: 'Onest', sans-serif; font-size: 9px; }
+
+.section-panel, .admin-metric, .admin-server-card, .friend-add-form, .friends-list, .friends-empty, .match-list, .player-stats-wrap, .profile-hero, .profile-stat-grid, .profile-server-stats, .map-winrate-list, .admin-placeholder, .admin-error {
+  @apply rounded-lg bg-white;
+  border-color: transparent;
+  box-shadow: var(--shadow-soft);
+}
+.overview-grid .section-panel { box-shadow: var(--shadow-soft); }
+.stat-icon, .empty-icon, .admin-metric-icon, .admin-server-icon, .server-game-icon, .match-map-mark, .settings-panel-icon, .settings-session-icon, .bans-icon {
+  color: #0284c7;
+  border-color: #dbeefa;
+  border-radius: 6px;
+  background: #f0f9ff;
+}
+.stat-copy strong, .faq-question, .section-empty strong, .admin-metric-label, .admin-server-identity h3, .admin-server-metadata strong, .admin-statistics-source-head h3, .friend-details > strong, .friend-request-nickname, .server-main h3, .match-main strong, .match-result strong, .bans-strip strong, .player-identity strong, .stats-player-link, .profile-stat-item > strong, .profile-server-stat-name strong, .map-winrate-row > strong, .settings-block-heading, .settings-session-info > strong, .admin-placeholder strong, .admin-error strong, .media-dropzone > strong, .media-resolution-grid strong { color: #25364b; }
+.stat-copy strong, .faq-question, .server-main h3, .section-empty strong, .friend-details > strong, .friend-request-nickname { font-size: 12px; }
+.stat-copy small, .faq-answer, .panel-note, .section-empty > div > span, .admin-statistics-source > p, .friend-last-seen, .server-main > span, .match-main > span, .bans-strip > div > span, .stats-updated, .profile-data-note, .settings-description, .settings-media-controls, .settings-session-info > span { color: #64748b; font-size: 11px; line-height: 1.55; }
+.admin-server-address, .admin-server-metadata span, .admin-server-metadata strong, .admin-integration-empty, .admin-user-search-status, .admin-user-dialog .admin-user-subtitle, .admin-user-action-heading, .friend-action, .stats-pagination, .profile-stat-label, .profile-stat-item > small, .profile-server-stat-name span, .profile-server-stat-values, .profile-server-stat-link, .map-winrate-row > small, .settings-session-info > strong, .settings-security-status, .settings-actions > span, .settings-secret span, .media-resolution-grid span { font-size: 11px; }
+.admin-server-actions .friend-action, .admin-server-actions .admin-danger-button, .admin-user-media-actions .admin-danger-button, .admin-settings-button { font-size: 11px; }
+.admin-user-action-heading, .admin-integration-results-head, .settings-block-heading { color: #334155; }
+.admin-role-label.is-admin, .admin-server-metadata strong.is-connected { color: #0f766e; }
+.admin-user-status.is-blocked, .admin-user-current-status strong.is-blocked { color: #b91c1c; }
+.admin-danger-button.is-delete { color: #b91c1c; border-color: #fecaca; }
+.stat-value, .admin-metric strong, .profile-stat-item > strong, .match-score, .map-winrate-value { color: #172436; font-family: 'IBM Plex Sans', sans-serif; }
+.player-rank, .player-highlight, .profile-cover-code, .profile-stat-index { font-family: 'IBM Plex Sans', sans-serif; }
+.faq-question svg, .admin-subnav-link, .settings-tab { color: #64748b; }
+.faq-question:hover, .admin-subnav-link:hover, .admin-subnav-link.is-active, .settings-tab:hover, .settings-tab[aria-selected='true'] { color: #0369a1; }
+.section-empty, .bans-strip { border-color: transparent; background: linear-gradient(100deg, #f0f9ff, #fff 75%); box-shadow: var(--shadow-soft); }
+.bans-status { border-color: #bae6fd; color: #0369a1; background: #fff; letter-spacing: 0; }
+.server-row { border-color: transparent; background: #fff; box-shadow: var(--shadow-soft); }
+.server-row::before { background: linear-gradient(110deg, transparent, rgba(14,165,233,.06)); clip-path: none; }
+.server-row:last-child { border-bottom: 1px solid transparent; }
+.server-row:hover { border-color: transparent; background: #f8fcff; }
+.match-row:hover { background: #f8fcff; }
+.server-players, .server-players.has-query-data { color: #475569; font-size: 11px; }
+.server-players svg { color: #94a3b8; }
+.server-join { color: #0284c7; border-color: #cdeaf8; background: #f0f9ff; }
+.server-join:hover { color: #fff; background: #0284c7; border-color: #0284c7; transform: none; }
+.page-footer { color: #94a3b8; font-size: 9px; }
+
+.admin-users-table th, .admin-integration-table th, .player-stats-table th { color: #64748b; background: #f8fafc; font-size: 10px; }
+.admin-users-table td, .admin-integration-table td, .player-stats-table td { color: #475569; font-size: 11px; }
+.admin-users-table td:first-child a, .stats-player-link { color: #0369a1; }
+.player-stats-table tbody tr:not(:last-child):hover { background: #f8fafc; }
+.stats-no-data, .player-stats-empty strong { color: #64748b; font-size: 13px; }
+.stats-page-button, .admin-server-icon-button, .friend-action, .profile-report-button, .profile-settings-link, .settings-action-button, .dialog-secondary, .media-select-button { color: #475569; border-color: #dce5ed; background: #fff; }
+.stats-page-button:hover:not(:disabled), .admin-server-icon-button:hover:not(:disabled), .friend-action:hover:not(:disabled), .profile-report-button:hover, .profile-settings-link:hover, .settings-action-button:hover:not(:disabled), .dialog-secondary:hover { color: #0369a1; border-color: #bae6fd; background: #f0f9ff; }
+.admin-statistics-source-control { border-color: #e2e8f0; background: #f1f5f9; }
+.admin-statistics-source-control button { color: #64748b; font-size: 11px; }
+.admin-statistics-source-control button[aria-pressed='true'] { color: #0369a1; border-color: #d4e9f4; background: #fff; box-shadow: var(--shadow-soft); }
+.admin-rcon-output { color: #dbeafe; background: #1e293b; border-color: #334155; }
+.admin-user-current-status, .media-dropzone, .media-resolution-grid > div, .settings-secret { color: #64748b; border-color: var(--line); background: #f8fafc; }
+.admin-user-current-status span, .admin-role-label, .profile-title-group > span, .profile-stat-label, .profile-server-stat-name span, .profile-server-stat-values, .settings-security-status, .media-resolution-grid span { color: #64748b; }
+.admin-user-current-status strong, .friend-last-seen.is-online, .admin-user-status, .admin-user-action-status, .friends-action-message, .settings-message { color: #0f766e; }
+.admin-danger-button, .settings-remove-button { color: #b91c1c; border-color: #fecaca; background: #fff7f7; }
+.admin-danger-button:hover:not(:disabled), .settings-remove-button:hover:not(:disabled) { color: #991b1b; border-color: #fca5a5; background: #fef2f2; }
+.admin-danger-button.is-confirm { color: #fff; background: #b91c1c; border-color: #b91c1c; }
+.admin-user-confirmation, .auth-message { color: #991b1b; background: #fff7f7; border-color: #fecaca; }
+.admin-user-confirmation p, .field-error, .admin-error-inline, .admin-statistics-source .admin-statistics-source-error { color: #b91c1c; }
+
+.friend-avatar-fallback, .profile-avatar-fallback, .player-stat-initial, .settings-avatar-preview { color: #0369a1; background: #e0f2fe; border-color: #d5edf8; font-family: 'IBM Plex Sans', sans-serif; }
+.profile-cover:not(.has-cover) { background: linear-gradient(115deg, #dceffc, #e8f8f6 65%, #dceffc); }
+.profile-cover:not(.has-cover) .profile-cover-code { color: #64748b; }
+.profile-cover.has-cover .profile-cover-code { color: #fff; }
+.profile-stat-item { border-color: var(--line-soft); }
+.profile-stat-item > small, .profile-stat-index, .map-winrate-row > small { color: #64748b; }
+.map-winrate-track { background: #e2e8f0; }
+.settings-cover-preview { border-color: var(--line); color: #64748b; background: linear-gradient(115deg, #e0f2fe, #f0fdfa); }
+.settings-secret code { color: #0369a1; }
+.settings-block-heading > svg, .settings-actions > span svg { color: #0284c7; }
+.settings-actions > span, .settings-session-info > span { color: #64748b; }
+.profile-toast { color: #115e59; border-color: #99f6e4; background: #f0fdfa; box-shadow: var(--shadow-soft); }
+.profile-toast-icon { color: #fff; background: #0d9488; }
+.profile-toast-close { color: #64748b; }
+.profile-toast-close:hover { color: #0f766e; background: #ccfbf1; }
+
+.modal-backdrop { background: rgba(15,23,42,.38); backdrop-filter: blur(4px); }
+.dialog-mark { color: #fff; background: linear-gradient(145deg, #0ea5e9, #0284c7); }
+.dialog-close { color: #64748b; }
+.dialog-close:hover { color: #0369a1; background: #f0f9ff; }
+.info-dialog h2 { color: #172436; font-size: 24px; }
+.info-dialog > p, .auth-required > p, .privacy-copy > p, .auth-switch-row, .privacy-consent { color: #64748b; font-size: 12px; }
+.auth-field { @apply text-xs text-slate-700; }
+.auth-input, .settings-form .auth-input { @apply rounded-md border-slate-300 bg-white; color: #172436; font-size: 13px; }
+.auth-input::placeholder { color: #94a3b8; }
+.auth-input:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,.15); }
+.dialog-primary, .dialog-secondary { min-height: 38px; border-radius: 6px; font-size: 12px; }
+.dialog-primary:disabled { color: #fff; border-color: #94a3b8; background: #94a3b8; }
+.auth-inline-link:hover { color: #0369a1; }
+.route-enter-active, .route-leave-active, .profile-content-enter-active, .profile-content-leave-active { transition: opacity 220ms ease; }
+.route-enter-from, .route-leave-to, .profile-content-enter-from, .profile-content-leave-to { transform: none; }
+.profile-page > :nth-child(n) { animation: none; }
+
+.dark {
+  color-scheme: dark;
+  color: #e2e8f0;
+  background: #0b1220;
+  --bg: #0b1220;
+  --sidebar: #111a28;
+  --panel: #1c2838;
+  --line: #354357;
+  --line-soft: #2a384a;
+  --text: #e6edf5;
+  --muted: #aab9ca;
+  --subtle: #91a2b6;
+  --yellow: #7dd3e8;
+  --yellow-dim: #67b9d1;
+  --surface-tint: #25364b;
+  --shadow-soft: 0 12px 30px -14px rgba(0,0,0,.65), 0 3px 10px -4px rgba(0,0,0,.4);
+}
+.dark body { background: linear-gradient(145deg, #0b1220, #0d1624 58%, #101b28); }
+.dark .sidebar, .dark .topbar { background: rgba(17,26,40,.96); border-color: var(--line); }
+.dark .brand-name, .dark .welcome-copy h1, .dark .panel-heading h2, .dark .section-heading h2, .dark .info-dialog h2, .dark .stat-value, .dark .admin-metric strong, .dark .profile-stat-item > strong, .dark .match-score, .dark .map-winrate-value { color: #edf4f5; }
+.dark .nav-link, .dark .help-link, .dark .topbar-label, .dark .welcome-copy > p, .dark .eyebrow, .dark .section-kicker, .dark .faq-question svg, .dark .admin-subnav-link, .dark .settings-tab { color: var(--muted); }
+.dark .nav-link:hover, .dark .help-link:hover, .dark .sidebar-collapse-toggle:hover, .dark .nav-link.is-active, .dark .profile-button:hover, .dark .profile-button[aria-expanded='true'] { color: #c4ecf7; background: #26394d; border-color: #3a526a; }
+.dark .nav-link.is-active > svg:first-child, .dark .welcome-copy h1 span, .dark .section-count { color: #7dd3e8; }
+.dark .login-button, .dark .profile-menu, .dark .info-dialog, .dark .section-panel, .dark .admin-metric, .dark .admin-server-card, .dark .friend-add-form, .dark .friends-list, .dark .friends-empty, .dark .match-list, .dark .player-stats-wrap, .dark .profile-hero, .dark .profile-stat-grid, .dark .profile-server-stats, .dark .map-winrate-list, .dark .admin-placeholder, .dark .admin-error, .dark .server-row { color: var(--text); background: var(--panel); }
+.dark .login-button:hover, .dark .profile-menu a:hover, .dark .profile-menu button:hover, .dark .dialog-close:hover, .dark .server-row:hover, .dark .match-row:hover, .dark .player-stats-table tbody tr:not(:last-child):hover { color: #c4ecf7; background: #26394d; border-color: #48617a; }
+.dark .server-row:hover { border-color: transparent; }
+.dark .profile-menu a, .dark .profile-menu button, .dark .server-players, .dark .server-players.has-query-data { color: #cbd7e3; }
+.dark .welcome-section::after { background: linear-gradient(transparent, #405068, transparent); }
+.dark .welcome-stamp, .dark .route-intro-mark { color: #7dd3e8; border-color: #405d75; background: linear-gradient(135deg, #263c50, #253942); }
+.dark .welcome-stamp::before, .dark .welcome-stamp::after, .dark .route-intro-mark::after { border-color: #40556a; }
+.dark .stat-icon, .dark .empty-icon, .dark .admin-metric-icon, .dark .admin-server-icon, .dark .server-game-icon, .dark .match-map-mark, .dark .settings-panel-icon, .dark .settings-session-icon, .dark .bans-icon { color: #7dd3e8; border-color: #3a5066; background: #26394d; }
+.dark .stat-copy strong, .dark .faq-question, .dark .section-empty strong, .dark .admin-metric-label, .dark .admin-server-identity h3, .dark .admin-server-metadata strong, .dark .admin-statistics-source-head h3, .dark .friend-details > strong, .dark .friend-request-nickname, .dark .server-main h3, .dark .match-main strong, .dark .match-result strong, .dark .bans-strip strong, .dark .player-identity strong, .dark .stats-player-link, .dark .profile-server-stat-name strong, .dark .map-winrate-row > strong, .dark .settings-block-heading, .dark .settings-session-info > strong, .dark .admin-placeholder strong, .dark .admin-error strong, .dark .media-dropzone > strong, .dark .media-resolution-grid strong, .dark .admin-user-action-heading, .dark .admin-integration-results-head { color: #dce9ed; }
+.dark .stat-copy small, .dark .faq-answer, .dark .panel-note, .dark .section-empty > div > span, .dark .admin-statistics-source > p, .dark .friend-last-seen, .dark .server-main > span, .dark .match-main > span, .dark .bans-strip > div > span, .dark .stats-updated, .dark .profile-data-note, .dark .settings-description, .dark .settings-media-controls, .dark .settings-session-info > span, .dark .stats-no-data, .dark .player-stats-empty strong, .dark .info-dialog > p, .dark .auth-required > p, .dark .privacy-copy > p, .dark .auth-switch-row, .dark .privacy-consent, .dark .profile-title-group > span, .dark .profile-stat-label, .dark .profile-stat-item > small, .dark .profile-server-stat-name span, .dark .profile-server-stat-values { color: var(--muted); }
+.dark .section-empty, .dark .bans-strip { border-color: transparent; background: linear-gradient(100deg, #243549, #1c2838 75%); }
+.dark .bans-status, .dark .server-join, .dark .stats-page-button, .dark .admin-server-icon-button, .dark .friend-action, .dark .profile-report-button, .dark .profile-settings-link, .dark .settings-action-button, .dark .dialog-secondary, .dark .media-select-button { color: #c6d9e8; background: #243448; border-color: #3c526a; }
+.dark .server-join:hover, .dark .stats-page-button:hover:not(:disabled), .dark .admin-server-icon-button:hover:not(:disabled), .dark .friend-action:hover:not(:disabled), .dark .profile-report-button:hover, .dark .profile-settings-link:hover, .dark .settings-action-button:hover:not(:disabled), .dark .dialog-secondary:hover { color: #e1f8ff; background: #304b62; border-color: #63839b; }
+.dark .admin-users-table th, .dark .admin-integration-table th, .dark .player-stats-table th { color: var(--muted); background: #192535; }
+.dark .admin-users-table td, .dark .admin-integration-table td, .dark .player-stats-table td { color: #cbd7e3; }
+.dark .admin-users-table td:first-child a, .dark .stats-player-link, .dark .auth-inline-link, .dark .settings-secret code { color: #7dd3e8; }
+.dark .admin-statistics-source-control, .dark .admin-user-current-status, .dark .media-dropzone, .dark .media-resolution-grid > div, .dark .settings-secret { color: var(--muted); background: #172333; border-color: var(--line); }
+.dark .admin-statistics-source-control button { color: var(--muted); }
+.dark .admin-statistics-source-control button[aria-pressed='true'] { color: #c4ecf7; background: #30475d; border-color: #506a80; }
+.dark .friend-avatar-fallback, .dark .profile-avatar-fallback, .dark .player-stat-initial, .dark .settings-avatar-preview { color: #c4ecf7; background: #30475d; border-color: #506a80; }
+.dark .profile-cover:not(.has-cover), .dark .settings-cover-preview { background: linear-gradient(115deg, #30465d, #294442 65%, #303b50); }
+.dark .profile-cover:not(.has-cover) .profile-cover-code { color: #c0d3d8; }
+.dark .map-winrate-track { background: #3a4b5e; }
+.dark .auth-field { color: #dce9ed; }
+.dark .auth-input, .dark .settings-form .auth-input { color: #edf4f5; background: #131e2d; border-color: #46596f; }
+.dark .auth-input::placeholder { color: var(--subtle); }
+.dark .modal-backdrop { background: rgba(0,0,0,.62); }
+.dark .profile-toast { color: #a7f3d0; background: #183a32; border-color: #347563; }
+.dark .profile-toast-close { color: #b7d1ca; }
+.dark .profile-toast-close:hover { color: #e2fff4; background: #285346; }
+.dark .admin-danger-button, .dark .settings-remove-button, .dark .admin-user-confirmation, .dark .auth-message { color: #fecaca; background: #44272b; border-color: #87474e; }
+.dark .admin-user-confirmation p, .dark .field-error, .dark .admin-error-inline, .dark .admin-statistics-source .admin-statistics-source-error { color: #fca5a5; }
+.dark .admin-danger-button.is-confirm { color: #fff; background: #b91c1c; border-color: #b91c1c; }
+
+@media (max-width: 720px) {
+  .welcome-copy h1 { font-size: 38px; }
+  .welcome-copy > p { font-size: 13px; }
+  .topbar-label { font-size: 10px; }
+  .server-main h3 { font-size: 11px; }
+  .server-main > span { font-size: 10px; }
+  .section-panel { padding: 18px 16px; }
+}
+@media (max-width: 420px) {
+  .welcome-copy h1 { font-size: 34px; }
+  .eyebrow { font-size: 9px; letter-spacing: 0; }
+  .server-main h3 { font-size: 10px; }
+  .server-main > span { font-size: 9px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+button {
+  border-radius: 6px;
+  transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+button:disabled { cursor: not-allowed; }
+
+input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']),
+select,
+textarea {
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  color: #0f172a;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .05);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']),
+select { min-height: 40px; padding: 0 12px; }
+textarea { min-height: 100px; padding: 10px 12px; }
+input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']):focus,
+select:focus,
+textarea:focus {
+  border-color: #0ea5e9;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, .2);
+}
+input[aria-invalid='true'], textarea[aria-invalid='true'], select[aria-invalid='true'] { border-color: #e11d48; }
+input[aria-invalid='true']:focus, textarea[aria-invalid='true']:focus, select[aria-invalid='true']:focus { box-shadow: 0 0 0 3px rgba(225, 29, 72, .16); }
+input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']):disabled,
+select:disabled, textarea:disabled { color: #64748b; border-color: #e2e8f0; background: #f8fafc; box-shadow: none; cursor: not-allowed; opacity: 1; }
+input[type='checkbox'], input[type='radio'], input[type='range'] { accent-color: #0284c7; }
+.auth-field { gap: 8px; color: #334155; font-size: 12px; font-weight: 500; line-height: 1.45; }
+.field-error { font-size: 12px; }
+.settings-actions .dialog-primary { min-height: 40px; }
+
+.login-button, .dialog-secondary, .friend-action, .profile-report-button, .profile-settings-link, .settings-action-button, .settings-remove-button, .media-select-button, .admin-settings-button, .server-join, .dialog-primary, .register-button, .profile-friend-button, .friend-add-button, .admin-danger-button {
+  min-height: 38px;
+  padding: 0 13px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.dialog-primary, .register-button, .profile-friend-button, .friend-add-button {
+  min-height: 40px;
+  padding: 0 16px;
+  border-color: #0284c7;
+  color: #fff;
+  background: #0284c7;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .12);
+}
+.dialog-primary:hover:not(:disabled), .register-button:hover:not(:disabled), .profile-friend-button:hover:not(:disabled), .friend-add-button:hover:not(:disabled) {
+  border-color: #0369a1;
+  color: #fff;
+  background: #0369a1;
+  box-shadow: 0 3px 8px rgba(2, 132, 199, .2);
+}
+.dialog-primary:disabled, .register-button:disabled, .profile-friend-button:disabled, .friend-add-button:disabled {
+  border-color: #e2e8f0;
+  color: #94a3b8;
+  background: #f1f5f9;
+  box-shadow: none;
+}
+.login-button, .dialog-secondary, .friend-action, .profile-report-button, .profile-settings-link, .settings-action-button, .media-select-button, .admin-settings-button {
+  border-color: #cbd5e1;
+  color: #334155;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .05);
+}
+.login-button:hover:not(:disabled), .dialog-secondary:hover:not(:disabled), .friend-action:hover:not(:disabled), .profile-report-button:hover, .profile-settings-link:hover, .settings-action-button:hover:not(:disabled), .media-select-button:hover:not(:disabled), .admin-settings-button:hover:not(:disabled) {
+  border-color: #94a3b8;
+  color: #0f172a;
+  background: #f8fafc;
+}
+.admin-danger-button, .settings-remove-button {
+  border-color: #fecdd3;
+  color: #be123c;
+  background: #fff1f2;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .05);
+}
+.admin-danger-button:hover:not(:disabled), .settings-remove-button:hover:not(:disabled) {
+  border-color: #fda4af;
+  color: #9f1239;
+  background: #ffe4e6;
+}
+.settings-workspace .dialog-primary, .settings-workspace .dialog-secondary, .settings-workspace .settings-action-button, .settings-workspace .settings-remove-button {
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.stats-page-button, .admin-server-icon-button { width: 36px; height: 36px; border-radius: 6px; box-shadow: 0 1px 2px rgba(15, 23, 42, .05); }
+
+.dark input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']),
+.dark select,
+.dark textarea {
+  border-color: #475569;
+  color: #e2e8f0;
+  background: #111c2c;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
+}
+.dark input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range'])::placeholder,
+.dark textarea::placeholder { color: #94a3b8; }
+.dark input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']):focus,
+.dark select:focus,
+.dark textarea:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56, 189, 248, .22); }
+.dark input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']):disabled,
+.dark select:disabled, .dark textarea:disabled { color: #94a3b8; border-color: #354357; background: #1c2838; box-shadow: none; }
+.dark input[type='checkbox'], .dark input[type='radio'], .dark input[type='range'] { accent-color: #7dd3e8; }
+.dark .auth-field { color: #cbd5e1; }
+.dark .dialog-primary:disabled, .dark .register-button:disabled, .dark .profile-friend-button:disabled, .dark .friend-add-button:disabled {
+  border-color: #354357;
+  color: #64748b;
+  background: #243144;
+}
+.dark .login-button, .dark .dialog-secondary, .dark .friend-action, .dark .profile-report-button, .dark .profile-settings-link, .dark .settings-action-button, .dark .media-select-button, .dark .admin-settings-button {
+  border-color: #475569;
+  color: #dbeafe;
+  background: #243448;
+}
+.dark .login-button:hover:not(:disabled), .dark .dialog-secondary:hover:not(:disabled), .dark .friend-action:hover:not(:disabled), .dark .profile-report-button:hover, .dark .profile-settings-link:hover, .dark .settings-action-button:hover:not(:disabled), .dark .media-select-button:hover:not(:disabled), .dark .admin-settings-button:hover:not(:disabled) {
+  border-color: #64748b;
+  color: #f1f5f9;
+  background: #304b62;
+}
+.dark .admin-danger-button, .dark .settings-remove-button { border-color: #7f1d35; color: #fda4af; background: #3b202b; }
+.dark .admin-danger-button:hover:not(:disabled), .dark .settings-remove-button:hover:not(:disabled) { border-color: #9f1239; color: #fecdd3; background: #4a1f2d; }
+
+.stats-search { position: relative; display: flex; min-width: 0; align-items: center; }
+.stats-search-icon { position: absolute; z-index: 1; left: 13px; color: #94a3b8; pointer-events: none; }
+.stats-search input.stats-search-input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']) { min-width: 0; width: 100%; padding-right: 42px; padding-left: 40px; }
+.stats-search input[type='search'] { appearance: none; -webkit-appearance: none; }
+.stats-search input[type='search']::-webkit-search-cancel-button,
+.stats-search input[type='search']::-webkit-search-decoration,
+.stats-search input[type='search']::-webkit-search-results-button,
+.stats-search input[type='search']::-webkit-search-results-decoration { display: none !important; appearance: none !important; -webkit-appearance: none !important; }
+.stats-search input[type='search']::-ms-clear { display: none; width: 0; height: 0; }
+.stats-search-clear { position: absolute; right: 5px; display: grid; width: 30px; height: 30px; place-items: center; border: 0; color: #64748b; background: transparent; cursor: pointer; }
+.stats-search-clear:hover { color: #0369a1; background: #f1f5f9; }
+.dark .stats-search-icon { color: #91a2b6; }
+.dark .stats-search-clear { color: #aab9ca; }
+.dark .stats-search-clear:hover { color: #e2e8f0; background: #30475d; }
+
+@media (max-width: 420px) {
+  .topbar .login-button, .topbar .register-button { width: 36px; min-width: 36px; height: 36px; min-height: 36px; padding: 0; }
+}
+
+@media (max-width: 720px) {
+  .stats-toolbar { grid-template-columns: minmax(0, 1fr); }
+  .stats-updated { justify-self: start; }
+}
