@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { Activity, ArrowUpRight, Ban, ChevronDown, Gamepad2, Users } from '@lucide/vue'
+import { Activity, ArrowRight, Ban, ChevronDown, Gamepad2, Users } from '@lucide/vue'
 import { getApiHealth, getPublicServers } from './api'
 import type { PublicGameServer } from './api'
 import MatchList from './components/MatchList.vue'
@@ -155,7 +155,7 @@ onMounted(async () => {
           <span class="server-game-icon"><Gamepad2 :size="19" /></span>
           <div class="server-main"><h3>{{ server.name }}</h3><span>{{ server.mode }} <i></i> {{ server.map || 'Карта не получена' }}</span></div>
           <div class="server-players" :class="{ 'has-query-data': server.playersOnline !== null }"><Users :size="15" /><strong>{{ server.playersOnline ?? '—' }}</strong><span>/ {{ server.playerLimit ?? '—' }}</span></div>
-          <a class="server-join" :href="`steam://connect/${server.address}`" :aria-label="`Подключиться к ${server.name}`"><ArrowUpRight :size="17" /></a>
+          <a class="server-join" :href="`steam://connect/${server.address}`" :aria-label="`Подключиться к ${server.name}`"><ArrowRight :size="17" /></a>
         </article>
       </div>
       <div v-else class="empty-state section-empty">

@@ -6,6 +6,7 @@ import {
   Activity,
   ArrowUpRight,
   Ban,
+  Bell,
   ChevronDown,
   CircleHelp,
   Gamepad2,
@@ -23,8 +24,8 @@ import {
   Users,
   X,
 } from '@lucide/vue'
-import { ApiRequestError, getCurrentUser, loginAccount, logoutAccount, registerAccount } from './api'
-import type { AuthUser, LoginPayload, RegisterPayload } from './api'
+import { ApiRequestError, clearAppNotifications, getAppNotifications, getCurrentUser, loginAccount, logoutAccount, markAllAppNotificationsRead, markAppNotificationRead, registerAccount } from './api'
+import type { AppNotification, AuthUser, LoginPayload, RegisterPayload } from './api'
 import { adminLandingPath } from './adminAccess'
 
 type AuthMode = 'login' | 'register' | 'help' | 'privacy' | 'required' | null
@@ -50,6 +51,15 @@ const sidebar = ref<HTMLElement | null>(null)
 const authRedirect = ref<string | null>(null)
 const profileMenuOpen = ref(false)
 const profileWrap = ref<HTMLElement | null>(null)
+const notificationsOpen = ref(false)
+const notificationsWrap = ref<HTMLElement | null>(null)
+const notifications = ref<AppNotification[]>([])
+const notificationsLoading = ref(false)
+const notificationsClearBusy = ref(false)
+const notificationsError = ref('')
+const unreadNotificationCount = ref(0)
+let notificationsPollTimer: number | undefined
+let notificationsRequestPending = false
 const authBusy = ref(false)
 const authMessage = ref('')
 const authErrors = ref<Record<string, string[]>>({})
@@ -142,6 +152,82 @@ function closeProfileMenuOnOutsideClick(event: PointerEvent) {
   if (profileMenuOpen.value && event.target instanceof Node && !profileWrap.value?.contains(event.target)) {
     profileMenuOpen.value = false
   }
+  if (notificationsOpen.value && event.target instanceof Node && !notificationsWrap.value?.contains(event.target)) {
+    notificationsOpen.value = false
+  }
+}
+
+function closeHeaderPopoversOnEscape(event: KeyboardEvent) {
+  if (event.key !== 'Escape') return
+  profileMenuOpen.value = false
+  notificationsOpen.value = false
+}
+
+async function refreshNotifications() {
+  if (!currentUser.value || notificationsRequestPending) return
+  notificationsRequestPending = true
+  notificationsLoading.value = true
+  notificationsError.value = ''
+  try {
+    const result = await getAppNotifications()
+    notifications.value = result.notifications
+    unreadNotificationCount.value = result.unreadCount
+  } catch (error) {
+    notificationsError.value = error instanceof Error ? error.message : 'Не удалось загрузить уведомления.'
+  } finally {
+    notificationsLoading.value = false
+    notificationsRequestPending = false
+  }
+}
+
+function toggleNotifications() {
+  notificationsOpen.value = !notificationsOpen.value
+  profileMenuOpen.value = false
+  if (notificationsOpen.value) void refreshNotifications()
+}
+
+async function openNotification(notification: AppNotification) {
+  notificationsOpen.value = false
+  if (notification.isRead) return
+  notification.isRead = true
+  unreadNotificationCount.value = Math.max(0, unreadNotificationCount.value - 1)
+  try {
+    await markAppNotificationRead(notification.id)
+  } catch {
+    notification.isRead = false
+    unreadNotificationCount.value += 1
+  }
+}
+
+async function markAllNotificationsRead() {
+  if (!unreadNotificationCount.value) return
+  try {
+    await markAllAppNotificationsRead()
+    notifications.value = notifications.value.map((notification) => ({ ...notification, isRead: true }))
+    unreadNotificationCount.value = 0
+  } catch (error) {
+    notificationsError.value = error instanceof Error ? error.message : 'Не удалось отметить уведомления как прочитанные.'
+  }
+}
+
+async function clearNotifications() {
+  if (!notifications.value.length || notificationsClearBusy.value) return
+  notificationsClearBusy.value = true
+  notificationsError.value = ''
+  try {
+    await clearAppNotifications()
+    notifications.value = []
+    unreadNotificationCount.value = 0
+  } catch (error) {
+    notificationsError.value = error instanceof Error ? error.message : 'Не удалось очистить уведомления.'
+  } finally {
+    notificationsClearBusy.value = false
+  }
+}
+
+function notificationDateLabel(createdAt: string | null): string {
+  if (!createdAt) return ''
+  return new Date(createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 
 function toggleSidebar() {
@@ -385,7 +471,10 @@ async function submitAuth() {
     }
 
     currentUser.value = accountFromUser(user)
+    notifications.value = []
+    unreadNotificationCount.value = 0
     lastSessionRefreshAt = Date.now()
+    void refreshNotifications()
     const redirect = authRedirect.value
     closeDialog(false)
     if (redirect) await router.replace(redirect)
@@ -407,6 +496,8 @@ async function signOut() {
   try {
     await logoutAccount()
     currentUser.value = null
+    notifications.value = []
+    unreadNotificationCount.value = 0
     profileMenuOpen.value = false
     await router.replace({ name: 'home' })
   } catch {
@@ -423,10 +514,13 @@ function refreshSessionOnActivity() {
   void getCurrentUser().then((user) => {
     if (user) {
       currentUser.value = accountFromUser(user)
+      void refreshNotifications()
       return
     }
 
     currentUser.value = null
+    notifications.value = []
+    unreadNotificationCount.value = 0
     if (route.name === 'friends') {
       void router.replace({ name: 'home', query: { auth: 'login', redirect: '/friends' } })
     }
@@ -435,17 +529,22 @@ function refreshSessionOnActivity() {
 
 onMounted(async () => {
   document.addEventListener('pointerdown', closeProfileMenuOnOutsideClick)
+  window.addEventListener('keydown', closeHeaderPopoversOnEscape)
   window.addEventListener('keydown', handleMobileMenuKeydown)
   window.addEventListener('resize', closeMobileMenuOnResize)
   for (const eventName of activityEvents) {
     window.addEventListener(eventName, refreshSessionOnActivity, { passive: true })
   }
+  notificationsPollTimer = window.setInterval(() => {
+    if (document.visibilityState === 'visible') void refreshNotifications()
+  }, 60_000)
 
   try {
     const user = await getCurrentUser()
     if (user) {
       currentUser.value = accountFromUser(user)
       lastSessionRefreshAt = Date.now()
+      void refreshNotifications()
     }
   } catch {
     currentUser.value = null
@@ -454,11 +553,13 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', closeProfileMenuOnOutsideClick)
+  window.removeEventListener('keydown', closeHeaderPopoversOnEscape)
   window.removeEventListener('keydown', handleMobileMenuKeydown)
   window.removeEventListener('resize', closeMobileMenuOnResize)
   for (const eventName of activityEvents) {
     window.removeEventListener(eventName, refreshSessionOnActivity)
   }
+  if (notificationsPollTimer !== undefined) window.clearInterval(notificationsPollTimer)
 })
 </script>
 
@@ -498,7 +599,7 @@ onBeforeUnmount(() => {
           active-class="is-active"
           @click="closeMobileMenu(false)"
         >
-          <component :is="item.icon" :size="18" :stroke-width="1.8" />
+          <span class="nav-icon"><component :is="item.icon" :size="18" :stroke-width="1.8" /></span>
           <span class="nav-label">{{ item.label }}</span>
           <ArrowUpRight v-if="route.name === item.id" class="nav-arrow" :size="14" />
         </RouterLink>
@@ -513,14 +614,14 @@ onBeforeUnmount(() => {
           :title="sidebarCollapsed ? 'Админ панель' : undefined"
           @click="closeMobileMenu(false)"
         >
-          <ShieldCheck :size="18" :stroke-width="1.8" />
+          <span class="nav-icon"><ShieldCheck :size="18" :stroke-width="1.8" /></span>
           <span class="nav-label">Админ панель</span>
         </RouterLink>
       </nav>
 
       <div class="sidebar-bottom">
         <button class="help-link" type="button" :aria-label="sidebarCollapsed ? 'Помощь' : undefined" :title="sidebarCollapsed ? 'Помощь' : undefined" @click="closeMobileMenu(false); authMode = 'help'">
-          <CircleHelp :size="18" :stroke-width="1.8" />
+          <span class="nav-icon"><CircleHelp :size="18" :stroke-width="1.8" /></span>
           <span class="help-label">Помощь</span>
           <ArrowUpRight class="help-arrow" :size="14" />
         </button>
@@ -551,8 +652,32 @@ onBeforeUnmount(() => {
             <button class="login-button" type="button" @click="openAuth('login')"><LogIn :size="16" /><span>Войти</span></button>
             <button class="register-button" type="button" @click="openAuth('register')"><UserPlus :size="16" /><span>Регистрация</span></button>
           </template>
-          <div v-else ref="profileWrap" class="profile-wrap">
-            <button class="profile-button" type="button" :aria-expanded="profileMenuOpen" aria-haspopup="menu" @click="profileMenuOpen = !profileMenuOpen">
+          <template v-else>
+          <div ref="notificationsWrap" class="notifications-wrap">
+            <button class="notifications-button" type="button" :aria-expanded="notificationsOpen" aria-haspopup="dialog" :aria-label="unreadNotificationCount ? `Уведомления, непрочитанных: ${unreadNotificationCount}` : 'Уведомления'" :title="unreadNotificationCount ? `Непрочитанных уведомлений: ${unreadNotificationCount}` : 'Уведомления'" @click="toggleNotifications">
+              <Bell :size="18" />
+              <span v-if="unreadNotificationCount > 0" class="notification-unread-indicator" aria-hidden="true">
+                <span class="notification-ping motion-safe:animate-ping"></span>
+                <span class="notification-unread-dot"></span>
+              </span>
+            </button>
+            <Transition name="account-menu">
+              <section v-if="notificationsOpen" class="notifications-panel" role="dialog" aria-label="Уведомления">
+                <header class="notifications-panel-heading"><h2>Уведомления</h2><span class="notifications-heading-actions"><button v-if="unreadNotificationCount > 0" type="button" @click="markAllNotificationsRead">Прочитать все</button><button v-if="notifications.length" class="notifications-clear-button" type="button" aria-label="Очистить уведомления" title="Очистить уведомления" :disabled="notificationsClearBusy" @click="clearNotifications"><X :size="15" /></button></span></header>
+                <p v-if="notificationsLoading && !notifications.length" class="notifications-panel-message">Загружаем уведомления…</p>
+                <p v-else-if="notificationsError" class="notifications-panel-message" role="alert">{{ notificationsError }}</p>
+                <div v-else-if="notifications.length" class="notifications-list">
+                  <RouterLink v-for="notification in notifications" :key="notification.id" class="notification-item" :class="{ 'is-unread': !notification.isRead }" :to="notification.link || '/friends'" @click="openNotification(notification)">
+                    <span class="notification-item-copy"><strong>{{ notification.title }}</strong><span>{{ notification.message }}</span></span>
+                    <time v-if="notification.createdAt" :datetime="notification.createdAt">{{ notificationDateLabel(notification.createdAt) }}</time>
+                  </RouterLink>
+                </div>
+                <p v-else class="notifications-panel-message">Новых уведомлений пока нет.</p>
+              </section>
+            </Transition>
+          </div>
+          <div ref="profileWrap" class="profile-wrap">
+            <button class="profile-button" type="button" :aria-expanded="profileMenuOpen" aria-haspopup="menu" @click="profileMenuOpen = !profileMenuOpen; notificationsOpen = false">
               <img v-if="currentUser.avatarUrl" class="profile-avatar" :src="currentUser.avatarUrl" alt="" />
               <span v-else class="profile-avatar profile-initials">{{ currentUser.initials }}</span>
               <span class="profile-nickname">{{ currentUser.nickname }}</span>
@@ -567,6 +692,7 @@ onBeforeUnmount(() => {
               </div>
             </Transition>
           </div>
+          </template>
         </div>
       </header>
 

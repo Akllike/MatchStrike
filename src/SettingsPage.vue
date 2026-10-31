@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { Camera, KeyRound, Link2, LogOut, Mail, Monitor, Shield, ShieldCheck, Trash2, Upload, UserRound, X } from '@lucide/vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { Camera, KeyRound, Link2, LogOut, Mail, Monitor, Share2, Shield, ShieldCheck, Trash2, Upload, UserRound, X } from '@lucide/vue'
 import QRCode from 'qrcode'
 import PageLoader from './components/PageLoader.vue'
+import { socialIdFromValue } from './socialLinks'
 import {
   ApiRequestError,
   changeAccountPassword,
@@ -16,6 +17,7 @@ import {
   setupGoogleAuthenticator,
   updateAccountSettings,
   updateAccountSteamId,
+  updateSocialLinks,
   updateProfileMedia,
 } from './api'
 import type { AccountSession, AuthUser } from './api'
@@ -24,7 +26,7 @@ const emit = defineEmits<{
   accountUpdated: [user: AuthUser]
 }>()
 
-type SettingsTab = 'general' | 'security'
+type SettingsTab = 'general' | 'social' | 'security'
 type MediaField = 'avatar' | 'cover'
 
 const mediaSpecs: Record<MediaField, { maxBytes: number; maxWidth: number; maxHeight: number; maxSize: string }> = {
@@ -44,11 +46,26 @@ const accountForm = reactive({ nickname: '', email: '', current_password: '' })
 const steamIdForm = reactive({ steamId: '' })
 const steamBusy = ref(false)
 const steamMessage = ref('')
+const socialBusy = ref(false)
+const socialMessage = ref('')
+const socialErrors = ref<Record<string, string[]>>({})
+const socialPlatforms = [
+  { id: 'telegram', label: 'Telegram', placeholder: 'username' }, { id: 'instagram', label: 'Instagram', placeholder: 'username' },
+  { id: 'youtube', label: 'YouTube', placeholder: '@handle или ID канала' }, { id: 'twitch', label: 'Twitch', placeholder: 'username' },
+  { id: 'trovo', label: 'Trovo', placeholder: 'username' }, { id: 'boosty', label: 'Boosty', placeholder: 'username' },
+] as const
+const socialForm = reactive({ telegram: '', instagram: '', youtube: '', twitch: '', trovo: '', boosty: '' })
 const steamErrors = ref<Record<string, string[]>>({})
 const passwordBusy = ref(false)
 const passwordMessage = ref('')
 const passwordErrors = ref<Record<string, string[]>>({})
 const passwordForm = reactive({ current_password: '', password: '', password_confirmation: '' })
+const sensitiveChangeAction = ref<'password' | 'email' | null>(null)
+const sensitiveChangeDigits = ref(['', '', '', '', '', ''])
+const sensitiveChangeInputs = ref<(HTMLInputElement | null)[]>([])
+const sensitiveChangePositions = [0, 1, 2, 3, 4, 5] as const
+const sensitiveChangeCode = computed(() => sensitiveChangeDigits.value.join(''))
+const sensitiveChangeError = ref('')
 const mediaBusy = ref<MediaField | null>(null)
 const mediaMessage = ref('')
 const mediaError = ref('')
@@ -76,11 +93,29 @@ function errorFor(errors: Record<string, string[]>, field: string): string {
 
 function applyAccount(user: AuthUser) {
   account.value = user
+  for (const platform of socialPlatforms) socialForm[platform.id] = socialIdFromValue(platform.id, user.socialLinks?.[platform.id])
   accountForm.nickname = user.nickname
   accountForm.email = user.email
   accountForm.current_password = ''
   steamIdForm.steamId = user.steamId ?? ''
   emit('accountUpdated', user)
+}
+
+async function saveSocialLinks() {
+  if (socialBusy.value) return
+  socialBusy.value = true
+  socialMessage.value = ''
+  socialErrors.value = {}
+  try {
+    const socialLinks = await updateSocialLinks(Object.fromEntries(socialPlatforms.map(({ id }) => [id, socialForm[id].trim() || null])))
+    if (account.value) account.value.socialLinks = socialLinks
+    socialMessage.value = 'Ссылки на социальные сети сохранены.'
+  } catch (error) {
+    if (error instanceof ApiRequestError) {
+      socialErrors.value = error.errors
+      socialMessage.value = Object.keys(error.errors).length ? '' : error.message
+    } else socialMessage.value = 'Не удалось сохранить ссылки.'
+  } finally { socialBusy.value = false }
 }
 
 async function loadSessions() {
@@ -128,8 +163,8 @@ async function saveNickname() {
   }
 }
 
-async function saveEmail() {
-  if (!emailChanged.value || accountBusy.value) return
+async function saveEmail(twoFactorCode?: string): Promise<boolean> {
+  if (!emailChanged.value || accountBusy.value || (account.value?.twoFactorEnabled && !twoFactorCode)) return false
   accountBusy.value = true
   accountErrors.value = {}
   emailMessage.value = ''
@@ -137,8 +172,10 @@ async function saveEmail() {
     applyAccount(await updateAccountSettings({
       email: accountForm.email.trim(),
       current_password: accountForm.current_password,
+      ...(account.value?.twoFactorEnabled && twoFactorCode ? { two_factor_code: twoFactorCode } : {}),
     }))
     emailMessage.value = 'Адрес электронной почты обновлён.'
+    return true
   } catch (error) {
     if (error instanceof ApiRequestError) {
       accountErrors.value = error.errors
@@ -146,22 +183,35 @@ async function saveEmail() {
     } else {
       emailMessage.value = 'Не удалось изменить адрес электронной почты.'
     }
+    return false
   } finally {
     accountBusy.value = false
   }
 }
 
-async function savePassword() {
-  if (passwordBusy.value) return
+function requestEmailChange() {
+  if (!emailChanged.value || accountBusy.value) return
+  if (account.value?.twoFactorEnabled) {
+    sensitiveChangeAction.value = 'email'
+    clearSensitiveChangeCode()
+    sensitiveChangeError.value = ''
+    return
+  }
+  void saveEmail()
+}
+
+async function savePassword(twoFactorCode?: string): Promise<boolean> {
+  if (passwordBusy.value || (account.value?.twoFactorEnabled && !twoFactorCode)) return false
   passwordBusy.value = true
   passwordErrors.value = {}
   passwordMessage.value = ''
   try {
-    await changeAccountPassword(passwordForm)
+    await changeAccountPassword({ ...passwordForm, ...(account.value?.twoFactorEnabled && twoFactorCode ? { two_factor_code: twoFactorCode } : {}) })
     passwordForm.current_password = ''
     passwordForm.password = ''
     passwordForm.password_confirmation = ''
     passwordMessage.value = 'Пароль изменён.'
+    return true
   } catch (error) {
     if (error instanceof ApiRequestError) {
       passwordErrors.value = error.errors
@@ -169,9 +219,88 @@ async function savePassword() {
     } else {
       passwordMessage.value = 'Не удалось изменить пароль.'
     }
+    return false
   } finally {
     passwordBusy.value = false
   }
+}
+
+function requestPasswordChange() {
+  if (passwordBusy.value) return
+  if (account.value?.twoFactorEnabled) {
+    sensitiveChangeAction.value = 'password'
+    clearSensitiveChangeCode()
+    sensitiveChangeError.value = ''
+    return
+  }
+  void savePassword()
+}
+
+function closeSensitiveChangeDialog() {
+  if (accountBusy.value || passwordBusy.value) return
+  sensitiveChangeAction.value = null
+  clearSensitiveChangeCode()
+  sensitiveChangeError.value = ''
+}
+
+function clearSensitiveChangeCode() {
+  sensitiveChangeDigits.value = ['', '', '', '', '', '']
+  void nextTick(() => sensitiveChangeInputs.value[0]?.focus())
+}
+
+function setSensitiveChangeInput(index: number, element: unknown) {
+  sensitiveChangeInputs.value[index] = element instanceof HTMLInputElement ? element : null
+}
+
+function handleSensitiveChangeInput(index: number, event: Event) {
+  const input = event.target as HTMLInputElement
+  const enteredDigits = input.value.replace(/\D/g, '').slice(0, 6 - index)
+  const digits = [...sensitiveChangeDigits.value]
+
+  if (enteredDigits.length > 1) {
+    for (let offset = 0; offset < enteredDigits.length; offset += 1) digits[index + offset] = enteredDigits[offset]
+  } else {
+    digits[index] = enteredDigits
+  }
+
+  sensitiveChangeDigits.value = digits
+  input.value = digits[index] ?? ''
+  if (enteredDigits) {
+    const nextIndex = Math.min(index + Math.max(enteredDigits.length, 1), sensitiveChangePositions.length - 1)
+    sensitiveChangeInputs.value[nextIndex]?.focus()
+  }
+}
+
+function handleSensitiveChangeKeydown(index: number, event: KeyboardEvent) {
+  if (event.key === 'ArrowLeft' && index > 0) {
+    event.preventDefault()
+    sensitiveChangeInputs.value[index - 1]?.focus()
+    return
+  }
+  if (event.key === 'ArrowRight' && index < sensitiveChangePositions.length - 1) {
+    event.preventDefault()
+    sensitiveChangeInputs.value[index + 1]?.focus()
+    return
+  }
+  if (event.key === 'Backspace' && !sensitiveChangeDigits.value[index] && index > 0) {
+    const digits = [...sensitiveChangeDigits.value]
+    digits[index - 1] = ''
+    sensitiveChangeDigits.value = digits
+    event.preventDefault()
+    sensitiveChangeInputs.value[index - 1]?.focus()
+  }
+}
+
+async function confirmSensitiveChange() {
+  if (!sensitiveChangeAction.value || sensitiveChangeCode.value.length !== 6) return
+  sensitiveChangeError.value = ''
+  const saved = sensitiveChangeAction.value === 'email'
+    ? await saveEmail(sensitiveChangeCode.value)
+    : await savePassword(sensitiveChangeCode.value)
+  if (saved) closeSensitiveChangeDialog()
+  else sensitiveChangeError.value = sensitiveChangeAction.value === 'email'
+    ? errorFor(accountErrors.value, 'two_factor_code') || accountErrors.value.email?.[0] || emailMessage.value || 'Не удалось подтвердить смену email.'
+    : errorFor(passwordErrors.value, 'two_factor_code') || passwordErrors.value.current_password?.[0] || passwordErrors.value.password?.[0] || passwordMessage.value || 'Не удалось подтвердить смену пароля.'
 }
 
 function imageDimensions(file: File): Promise<{ width: number; height: number }> {
@@ -404,6 +533,7 @@ onMounted(loadAccount)
   <div v-else class="settings-workspace">
     <div class="settings-tabs" role="tablist" aria-label="Настройки аккаунта">
       <button id="settings-tab-general" class="settings-tab" type="button" role="tab" :aria-selected="activeTab === 'general'" aria-controls="settings-panel-general" @click="activeTab = 'general'"><UserRound :size="15" /> Основные</button>
+      <button id="settings-tab-social" class="settings-tab" type="button" role="tab" :aria-selected="activeTab === 'social'" aria-controls="settings-panel-social" @click="activeTab = 'social'"><Share2 :size="15" /> Социальные сети</button>
       <button id="settings-tab-security" class="settings-tab" type="button" role="tab" :aria-selected="activeTab === 'security'" aria-controls="settings-panel-security" @click="activeTab = 'security'"><ShieldCheck :size="15" /> Безопасность</button>
     </div>
 
@@ -457,10 +587,19 @@ onMounted(loadAccount)
       <p v-else-if="mediaMessage" class="settings-message" role="status">{{ mediaMessage }}</p>
     </section>
 
+    <section v-else-if="activeTab === 'social'" id="settings-panel-social" class="section-panel settings-panel" role="tabpanel" aria-labelledby="settings-tab-social">
+      <div class="panel-heading"><div><div class="section-kicker">SOCIAL PROFILES</div><h2>Социальные сети</h2></div><span class="settings-panel-icon"><Share2 :size="17" /></span></div>
+      <form class="settings-block settings-form" @submit.prevent="saveSocialLinks">
+        <p class="settings-description">Укажите имя пользователя или ID без полной ссылки. Ссылка на профиль соберётся автоматически. Оставьте поле пустым, чтобы скрыть соцсеть.</p>
+        <label v-for="platform in socialPlatforms" :key="platform.id" class="auth-field"><span>{{ platform.label }}</span><input v-model.trim="socialForm[platform.id]" class="auth-input" type="text" autocomplete="off" :placeholder="platform.placeholder" maxlength="100" :aria-invalid="Boolean(errorFor(socialErrors, `socialLinks.${platform.id}`))" /><span v-if="errorFor(socialErrors, `socialLinks.${platform.id}`)" class="field-error">{{ errorFor(socialErrors, `socialLinks.${platform.id}`) }}</span></label>
+        <p v-if="socialMessage" class="settings-message" role="status">{{ socialMessage }}</p>
+        <div class="settings-actions"><span>Ссылки открываются в новой вкладке</span><button class="dialog-primary" type="submit" :disabled="socialBusy">{{ socialBusy ? 'Сохраняем…' : 'Сохранить ссылки' }}</button></div>
+      </form>
+    </section>
     <section v-else id="settings-panel-security" class="section-panel settings-panel" role="tabpanel" aria-labelledby="settings-tab-security">
       <div class="panel-heading"><div><div class="section-kicker">ACCOUNT SECURITY</div><h2>Безопасность</h2></div><span class="settings-panel-icon"><ShieldCheck :size="17" /></span></div>
 
-      <form class="settings-block settings-form" @submit.prevent="savePassword">
+      <form class="settings-block settings-form" @submit.prevent="requestPasswordChange">
         <div class="settings-block-heading"><KeyRound :size="15" /><strong>Изменить пароль</strong></div>
         <div class="settings-two-column">
           <label class="auth-field"><span>Текущий пароль</span><input v-model="passwordForm.current_password" class="auth-input" type="password" autocomplete="current-password" required :aria-invalid="Boolean(errorFor(passwordErrors, 'current_password'))" /><span v-if="errorFor(passwordErrors, 'current_password')" class="field-error">{{ errorFor(passwordErrors, 'current_password') }}</span></label>
@@ -471,7 +610,7 @@ onMounted(loadAccount)
         <div class="settings-actions"><span>Не менее 8 символов</span><button class="dialog-primary" type="submit" :disabled="passwordBusy">{{ passwordBusy ? 'Обновляем…' : 'Обновить пароль' }}</button></div>
       </form>
 
-      <form class="settings-block settings-form" @submit.prevent="saveEmail">
+      <form class="settings-block settings-form" @submit.prevent="requestEmailChange">
         <div class="settings-block-heading"><Mail :size="15" /><strong>Адрес электронной почты</strong></div>
         <label class="auth-field"><span>Email</span><input v-model.trim="accountForm.email" class="auth-input" type="email" autocomplete="email" required maxlength="254" :aria-invalid="Boolean(errorFor(accountErrors, 'email'))" /><span v-if="errorFor(accountErrors, 'email')" class="field-error">{{ errorFor(accountErrors, 'email') }}</span></label>
         <label v-if="emailChanged" class="auth-field"><span>Текущий пароль для смены email</span><input v-model="accountForm.current_password" class="auth-input" type="password" autocomplete="current-password" required :aria-invalid="Boolean(errorFor(accountErrors, 'current_password'))" /><span v-if="errorFor(accountErrors, 'current_password')" class="field-error">{{ errorFor(accountErrors, 'current_password') }}</span></label>
@@ -533,4 +672,29 @@ onMounted(loadAccount)
       </form>
     </div>
   </Transition>
+  <Teleport to="body">
+    <Transition name="modal">
+      <div v-if="sensitiveChangeAction" class="modal-backdrop" @click.self="closeSensitiveChangeDialog" @keydown.esc="closeSensitiveChangeDialog">
+        <form class="info-dialog auth-two-factor-dialog settings-security-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="sensitive-change-title" @submit.prevent="confirmSensitiveChange">
+          <button class="dialog-close" type="button" aria-label="Закрыть" :disabled="accountBusy || passwordBusy" @click="closeSensitiveChangeDialog"><X :size="18" /></button>
+          <div class="section-kicker">MATCHSTRIKE / ACCOUNT</div>
+          <h2 id="sensitive-change-title">Подтверждение изменения</h2>
+          <div class="auth-form auth-two-factor">
+            <p class="auth-two-factor-copy">{{ sensitiveChangeAction === 'email' ? 'Введите шестизначный код из Google Authenticator, чтобы изменить email.' : 'Введите шестизначный код из Google Authenticator, чтобы изменить пароль.' }}</p>
+            <label class="auth-field">
+              <span>Код подтверждения</span>
+              <div class="auth-code-inputs" role="group" aria-label="Шестизначный код Google Authenticator">
+                <input v-for="index in sensitiveChangePositions" :key="index" :ref="(element) => setSensitiveChangeInput(index, element)" class="auth-input auth-code-input" type="text" inputmode="numeric" :autocomplete="index === 0 ? 'one-time-code' : 'off'" :value="sensitiveChangeDigits[index]" :aria-label="`Цифра ${index + 1} из 6`" :aria-invalid="Boolean(sensitiveChangeError)" :maxlength="6" required @input="handleSensitiveChangeInput(index, $event)" @keydown="handleSensitiveChangeKeydown(index, $event)" />
+              </div>
+              <span v-if="sensitiveChangeError" class="field-error" role="alert">{{ sensitiveChangeError }}</span>
+            </label>
+          </div>
+          <div class="dialog-actions">
+            <button class="dialog-secondary" type="button" :disabled="accountBusy || passwordBusy" @click="closeSensitiveChangeDialog">Отмена</button>
+            <button class="dialog-primary" type="submit" :disabled="sensitiveChangeCode.length !== 6 || accountBusy || passwordBusy">{{ accountBusy || passwordBusy ? 'Проверяем…' : 'Подтвердить' }}</button>
+          </div>
+        </form>
+      </div>
+    </Transition>
+  </Teleport>
 </template>

@@ -23,6 +23,7 @@ const requestsLoading = ref(true)
 const error = ref('')
 const requestsError = ref('')
 const removingNickname = ref<string | null>(null)
+const friendPendingRemoval = ref<FriendSummary | null>(null)
 const requestBusyId = ref<number | null>(null)
 const requestBusyAction = ref<'accept' | 'reject' | null>(null)
 const friendNickname = ref('')
@@ -171,24 +172,31 @@ function lastSeenLabel(lastSeenAt: string | null): string {
   return `Был в сети ${new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(timestamp)}`
 }
 
-async function removeFriend(friend: FriendSummary) {
+function removeFriend(friend: FriendSummary) {
   if (removingNickname.value) return
+  friendPendingRemoval.value = friend
+}
 
+function closeRemoveFriendDialog() {
+  if (removingNickname.value) return
+  friendPendingRemoval.value = null
+}
+
+async function confirmRemoveFriend() {
+  const friend = friendPendingRemoval.value
+  if (!friend || removingNickname.value) return
   removingNickname.value = friend.nickname
-  actionMessage.value = ''
-  error.value = ''
   try {
     await removeFriendFromList(friend.nickname)
     friends.value = friends.value.filter((item) => item.id !== friend.id)
-    actionMessage.value = `${friend.nickname} удалён из друзей.`
+    friendPendingRemoval.value = null
+    showToast(`${friend.nickname} удалён из друзей.`, 'success')
   } catch (requestError) {
-    error.value = requestError instanceof Error ? requestError.message : 'Не удалось удалить друга.'
+    showToast(requestError instanceof Error ? requestError.message : 'Не удалось удалить друга.', 'error')
   } finally {
     removingNickname.value = null
   }
 }
-
-const actionMessage = ref('')
 
 async function loadPage() {
   pageLoading.value = true
@@ -292,7 +300,7 @@ onMounted(loadPage)
         <div class="friend-actions">
           <RouterLink class="friend-action friend-profile-action" :to="{ name: 'profile', params: { nickname: friend.nickname } }"><UserRound :size="15" /> Профиль</RouterLink>
           <button class="friend-action friend-invite-action" type="button" disabled title="Приглашения появятся позже"><UserPlus :size="15" /> Пригласить</button>
-          <button class="friend-action friend-remove-action" type="button" :disabled="removingNickname !== null" @click="removeFriend(friend)"><Trash2 :size="15" /> {{ removingNickname === friend.nickname ? 'Удаляем…' : 'Удалить' }}</button>
+          <button class="friend-action friend-remove-action" type="button" :disabled="removingNickname !== null" @click="removeFriend(friend)"><Trash2 :size="15" /> Удалить</button>
         </div>
       </article>
     </div>
@@ -301,14 +309,13 @@ onMounted(loadPage)
       <div><strong>Список друзей пока пуст</strong><span>Добавляйте игроков в друзья из их профиля.</span></div>
     </div>
 
-    <p v-if="actionMessage" class="friends-action-message" role="status">{{ actionMessage }}</p>
   </section>
     </div>
   </Transition>
 
   <Transition name="profile-toast">
     <div v-if="toastMessage" class="profile-toast friends-toast" :class="`is-${toastTone}`" :role="toastTone === 'error' ? 'alert' : 'status'" aria-live="polite" aria-atomic="true">
-      <span class="profile-toast-icon">
+      <span class="profile-toast-icon motion-safe:animate-pulse">
         <Check v-if="toastTone === 'success'" :size="15" :stroke-width="2.5" />
         <X v-else-if="toastTone === 'error'" :size="15" :stroke-width="2.5" />
         <UserPlus v-else :size="15" :stroke-width="2.5" />
@@ -317,4 +324,17 @@ onMounted(loadPage)
       <button class="profile-toast-close" type="button" aria-label="Закрыть уведомление" @click="dismissToast"><X :size="15" /></button>
     </div>
   </Transition>
+  <Teleport to="body">
+    <Transition name="modal">
+      <div v-if="friendPendingRemoval" class="modal-backdrop" @click.self="closeRemoveFriendDialog">
+        <section class="info-dialog profile-remove-friend-dialog" role="dialog" aria-modal="true" aria-labelledby="friends-remove-title">
+          <button class="dialog-close" type="button" aria-label="Закрыть" :disabled="removingNickname !== null" @click="closeRemoveFriendDialog"><X :size="17" /></button>
+          <span class="dialog-mark"><Users :size="20" /></span>
+          <h2 id="friends-remove-title">Удалить из друзей?</h2>
+          <p>Вы уверены, что хотите удалить {{ friendPendingRemoval.nickname }} из списка друзей?</p>
+          <div class="dialog-actions"><button class="dialog-secondary" type="button" :disabled="removingNickname !== null" @click="closeRemoveFriendDialog">Отмена</button><button class="profile-confirm-remove" type="button" :disabled="removingNickname !== null" @click="confirmRemoveFriend">{{ removingNickname ? 'Удаляем…' : 'Удалить из друзей' }}</button></div>
+        </section>
+      </div>
+    </Transition>
+  </Teleport>
 </template>

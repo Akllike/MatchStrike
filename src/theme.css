@@ -105,7 +105,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .server-join { color: #0284c7; border-color: #cdeaf8; background: #f0f9ff; }
 .server-join:hover { color: #fff; background: #0284c7; border-color: #0284c7; transform: none; }
 .page-footer { color: #94a3b8; font-size: 9px; }
-
 .admin-users-table th, .admin-integration-table th, .player-stats-table th { color: #64748b; background: #f8fafc; font-size: 10px; }
 .admin-users-table td, .admin-integration-table td, .player-stats-table td { color: #475569; font-size: 11px; }
 .admin-users-table td:first-child a, .stats-player-link { color: #0369a1; }
@@ -125,7 +124,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .admin-danger-button.is-confirm { color: #fff; background: #b91c1c; border-color: #b91c1c; }
 .admin-user-confirmation, .auth-message { color: #991b1b; background: #fff7f7; border-color: #fecaca; }
 .admin-user-confirmation p, .field-error, .admin-error-inline, .admin-statistics-source .admin-statistics-source-error { color: #b91c1c; }
-
 .friend-avatar-fallback, .profile-avatar-fallback, .player-stat-initial, .settings-avatar-preview { color: #0369a1; background: #e0f2fe; border-color: #d5edf8; font-family: 'IBM Plex Sans', sans-serif; }
 .profile-cover:not(.has-cover) { background: linear-gradient(115deg, #dceffc, #e8f8f6 65%, #dceffc); }
 .profile-cover:not(.has-cover) .profile-cover-code { color: #64748b; }
@@ -181,7 +179,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .dark .brand-name, .dark .welcome-copy h1, .dark .panel-heading h2, .dark .section-heading h2, .dark .info-dialog h2, .dark .stat-value, .dark .admin-metric strong, .dark .profile-stat-item > strong, .dark .match-score, .dark .map-winrate-value { color: #edf4f5; }
 .dark .nav-link, .dark .help-link, .dark .topbar-label, .dark .welcome-copy > p, .dark .eyebrow, .dark .section-kicker, .dark .faq-question svg, .dark .admin-subnav-link, .dark .settings-tab { color: var(--muted); }
 .dark .nav-link:hover, .dark .help-link:hover, .dark .sidebar-collapse-toggle:hover, .dark .nav-link.is-active, .dark .profile-button:hover, .dark .profile-button[aria-expanded='true'] { color: #c4ecf7; background: #26394d; border-color: #3a526a; }
-.dark .nav-link.is-active > svg:first-child, .dark .welcome-copy h1 span, .dark .section-count { color: #7dd3e8; }
+.dark .nav-link.is-active .nav-icon > svg, .dark .welcome-copy h1 span, .dark .section-count { color: #7dd3e8; }
 .dark .login-button, .dark .profile-menu, .dark .info-dialog, .dark .section-panel, .dark .admin-metric, .dark .admin-server-card, .dark .friend-add-form, .dark .friends-list, .dark .friends-empty, .dark .match-list, .dark .player-stats-wrap, .dark .profile-hero, .dark .profile-stat-grid, .dark .profile-server-stats, .dark .map-winrate-list, .dark .admin-placeholder, .dark .admin-error, .dark .server-row { color: var(--text); background: var(--panel); }
 .dark .login-button:hover, .dark .profile-menu a:hover, .dark .profile-menu button:hover, .dark .dialog-close:hover, .dark .server-row:hover, .dark .match-row:hover, .dark .player-stats-table tbody tr:not(:last-child):hover { color: #c4ecf7; background: #26394d; border-color: #48617a; }
 .dark .server-row:hover { border-color: transparent; }
@@ -194,6 +192,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .dark .stat-copy small, .dark .faq-answer, .dark .panel-note, .dark .section-empty > div > span, .dark .admin-statistics-source > p, .dark .friend-last-seen, .dark .server-main > span, .dark .match-main > span, .dark .bans-strip > div > span, .dark .stats-updated, .dark .profile-data-note, .dark .settings-description, .dark .settings-media-controls, .dark .settings-session-info > span, .dark .stats-no-data, .dark .player-stats-empty strong, .dark .info-dialog > p, .dark .auth-required > p, .dark .privacy-copy > p, .dark .auth-switch-row, .dark .privacy-consent, .dark .profile-title-group > span, .dark .profile-stat-label, .dark .profile-stat-item > small, .dark .profile-server-stat-name span, .dark .profile-server-stat-values { color: var(--muted); }
 .dark .section-empty, .dark .bans-strip { border-color: transparent; background: linear-gradient(100deg, #243549, #1c2838 75%); }
 .dark .bans-status, .dark .server-join, .dark .stats-page-button, .dark .admin-server-icon-button, .dark .friend-action, .dark .profile-report-button, .dark .profile-settings-link, .dark .settings-action-button, .dark .dialog-secondary, .dark .media-select-button { color: #c6d9e8; background: #243448; border-color: #3c526a; }
+.dark .server-join { border-color: transparent; }
 .dark .server-join:hover, .dark .stats-page-button:hover:not(:disabled), .dark .admin-server-icon-button:hover:not(:disabled), .dark .friend-action:hover:not(:disabled), .dark .profile-report-button:hover, .dark .profile-settings-link:hover, .dark .settings-action-button:hover:not(:disabled), .dark .dialog-secondary:hover { color: #e1f8ff; background: #304b62; border-color: #63839b; }
 .dark .admin-users-table th, .dark .admin-integration-table th, .dark .player-stats-table th { color: var(--muted); background: #192535; }
 .dark .admin-users-table td, .dark .admin-integration-table td, .dark .player-stats-table td { color: #cbd7e3; }
@@ -215,6 +214,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .dark .admin-danger-button, .dark .settings-remove-button, .dark .admin-user-confirmation, .dark .auth-message { color: #fecaca; background: #44272b; border-color: #87474e; }
 .dark .admin-user-confirmation p, .dark .field-error, .dark .admin-error-inline, .dark .admin-statistics-source .admin-statistics-source-error { color: #fca5a5; }
 .dark .admin-danger-button.is-confirm { color: #fff; background: #b91c1c; border-color: #b91c1c; }
+
 
 @media (max-width: 720px) {
   .welcome-copy h1 { font-size: 38px; }
@@ -272,7 +272,7 @@ input[type='checkbox'], input[type='radio'], input[type='range'] { accent-color:
 .field-error { font-size: 12px; }
 .settings-actions .dialog-primary { min-height: 40px; }
 
-.login-button, .dialog-secondary, .friend-action, .profile-report-button, .profile-settings-link, .settings-action-button, .settings-remove-button, .media-select-button, .admin-settings-button, .server-join, .dialog-primary, .register-button, .profile-friend-button, .friend-add-button, .admin-danger-button {
+.login-button, .dialog-secondary, .friend-action, .profile-report-button, .profile-settings-link, .settings-action-button, .settings-remove-button, .media-select-button, .admin-settings-button, .dialog-primary, .register-button, .profile-friend-button, .friend-add-button, .admin-danger-button {
   min-height: 38px;
   padding: 0 13px;
   border-radius: 6px;
@@ -362,17 +362,6 @@ input[type='checkbox'], input[type='radio'], input[type='range'] { accent-color:
   color: #f1f5f9;
   background: #304b62;
 }
-.dark .admin-danger-button, .dark .settings-remove-button { border-color: #7f1d35; color: #fda4af; background: #3b202b; }
-.dark .admin-danger-button:hover:not(:disabled), .dark .settings-remove-button:hover:not(:disabled) { border-color: #9f1239; color: #fecdd3; background: #4a1f2d; }
-
-.stats-search { position: relative; display: flex; min-width: 0; align-items: center; }
-.stats-search-icon { position: absolute; z-index: 1; left: 13px; color: #94a3b8; pointer-events: none; }
-.stats-search input.stats-search-input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']) { min-width: 0; width: 100%; padding-right: 42px; padding-left: 40px; }
-.stats-search input[type='search'] { appearance: none; -webkit-appearance: none; }
-.stats-search input[type='search']::-webkit-search-cancel-button,
-.stats-search input[type='search']::-webkit-search-decoration,
-.stats-search input[type='search']::-webkit-search-results-button,
-.stats-search input[type='search']::-webkit-search-results-decoration { display: none !important; appearance: none !important; -webkit-appearance: none !important; }
 .stats-search input[type='search']::-ms-clear { display: none; width: 0; height: 0; }
 .stats-search-clear { position: absolute; right: 5px; display: grid; width: 30px; height: 30px; place-items: center; border: 0; color: #64748b; background: transparent; cursor: pointer; }
 .stats-search-clear:hover { color: #0369a1; background: #f1f5f9; }
@@ -388,3 +377,11 @@ input[type='checkbox'], input[type='radio'], input[type='range'] { accent-color:
   .stats-toolbar { grid-template-columns: minmax(0, 1fr); }
   .stats-updated { justify-self: start; }
 }
+
+.profile-friend-button.profile-remove-friend-button { border-color: #dc2626; color: #fff; background: #b91c1c; box-shadow: 0 4px 10px rgba(185, 28, 28, .2); }
+.profile-friend-button.profile-remove-friend-button:hover:not(:disabled) { border-color: #ef4444; color: #fff; background: #dc2626; box-shadow: 0 4px 12px rgba(185, 28, 28, .28); }
+.profile-aside-card { border-color: transparent; box-shadow: var(--shadow-soft); }
+.friend-action.friend-remove-action { border-color: #fecaca; color: #b91c1c; background: #fff7f7; }
+.friend-action.friend-remove-action:hover:not(:disabled) { border-color: #fca5a5; color: #991b1b; background: #fef2f2; }
+.dark .friend-action.friend-remove-action { border-color: #7f302b; color: #fecaca; background: #3b211f; }
+.dark .friend-action.friend-remove-action:hover:not(:disabled) { border-color: #b64d43; color: #fff; background: #542724; }

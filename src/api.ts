@@ -51,6 +51,7 @@ export interface AuthUser {
   adminRole: AdminRole | null
   avatarUrl: string | null
   coverUrl: string | null
+  socialLinks: SocialLinks
 }
 
 export interface AdminOverviewStats {
@@ -64,6 +65,7 @@ export interface AdminUserSummary {
   id: number
   nickname: string
   email: string
+  steamId: string | null
   adminRole: AdminRole | null
   adminRoleLabel: string | null
   isBlocked: boolean
@@ -161,15 +163,20 @@ export interface PlayerProfile {
   nickname: string
   avatarUrl: string | null
   coverUrl: string | null
+  socialLinks: Partial<Record<SocialPlatform, string>>
   isBlocked: boolean
   joinedAt: string | null
   isOwn: boolean
   isAuthenticated: boolean
   friendshipStatus: 'pending' | 'incoming' | 'accepted' | null
   stats: ProfileStats | null
+  friends: FriendSummary[]
   recentMatches: PlayerMatch[]
   mapWinRates: MapWinRate[]
 }
+
+export type SocialPlatform = 'telegram' | 'instagram' | 'youtube' | 'twitch' | 'trovo' | 'boosty'
+export type SocialLinks = Partial<Record<SocialPlatform, string>>
 
 export interface FriendSummary {
   id: number
@@ -184,6 +191,17 @@ export interface IncomingFriendRequest {
   nickname: string
   avatarUrl: string | null
   sentAt: string | null
+}
+
+export interface AppNotification {
+  id: number
+  type: string
+  title: string
+  message: string
+  link: string | null
+  data: Record<string, unknown>
+  isRead: boolean
+  createdAt: string | null
 }
 
 export interface FriendRequestResult {
@@ -401,7 +419,7 @@ export async function executeAdminServerRcon(serverId: number, command: string):
 
 export async function updateAdminUser(
   userId: number,
-  payload: { nickname: string; email: string },
+  payload: { nickname: string; email: string; steamId: string | null },
 ): Promise<AdminUserSummary> {
   const data = await mutateJson<{ user: AdminUserSummary }>(`${apiBaseUrl}/admin/users/${userId}`, 'PATCH', payload)
   return data.user
@@ -477,6 +495,26 @@ export async function getIncomingFriendRequests(): Promise<IncomingFriendRequest
   return data.requests
 }
 
+export async function getAppNotifications(): Promise<{ notifications: AppNotification[]; unreadCount: number }> {
+  const response = await fetch(`${apiBaseUrl}/me/notifications`, {
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  })
+  return readJson<{ notifications: AppNotification[]; unreadCount: number }>(response)
+}
+
+export async function markAppNotificationRead(notificationId: number): Promise<void> {
+  await postJson(`${apiBaseUrl}/me/notifications/${notificationId}/read`)
+}
+
+export async function markAllAppNotificationsRead(): Promise<void> {
+  await postJson(`${apiBaseUrl}/me/notifications/read-all`)
+}
+
+export async function clearAppNotifications(): Promise<void> {
+  await mutateJson(`${apiBaseUrl}/me/notifications`, 'DELETE')
+}
+
 export async function acceptFriendRequest(requestId: number): Promise<void> {
   await postJson(`${apiBaseUrl}/me/friend-requests/${requestId}/accept`)
 }
@@ -505,6 +543,7 @@ export async function updateAccountSettings(payload: {
   nickname?: string
   email?: string
   current_password?: string
+  two_factor_code?: string
 }): Promise<AuthUser> {
   const data = await postJson<AuthResponse>(`${apiBaseUrl}/me/settings`, payload)
   return data.user
@@ -514,6 +553,7 @@ export async function changeAccountPassword(payload: {
   current_password: string
   password: string
   password_confirmation: string
+  two_factor_code?: string
 }): Promise<void> {
   await postJson(`${apiBaseUrl}/me/password`, payload)
 }
@@ -542,6 +582,11 @@ export async function deleteProfileMedia(field: 'avatar' | 'cover'): Promise<Aut
 export async function updateAccountSteamId(steamId: string | null): Promise<AuthUser> {
   const data = await mutateJson<AuthResponse>(`${apiBaseUrl}/me/steam-id`, 'PUT', { steamId })
   return data.user
+}
+
+export async function updateSocialLinks(socialLinks: Partial<Record<SocialPlatform, string | null>>): Promise<SocialLinks> {
+  const data = await mutateJson<{ socialLinks: SocialLinks }>(`${apiBaseUrl}/me/social-links`, 'PUT', { socialLinks })
+  return data.socialLinks
 }
 
 export async function getAccountSessions(): Promise<AccountSession[]> {

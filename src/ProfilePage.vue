@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Activity, CalendarDays, Check, Flag, Target, Upload, UserPlus, UserRoundCheck, Users, X } from '@lucide/vue'
+import { Activity, CalendarDays, Check, Film, Flag, Share2, Target, Upload, UserPlus, UserRound, UserRoundMinus, Users, X } from '@lucide/vue'
 import MatchList from './components/MatchList.vue'
 import PageLoader from './components/PageLoader.vue'
-import { ApiRequestError, getPlayerProfile, reportPlayer, sendFriendRequest, updateProfileMedia } from './api'
+import { socialProfileUrl } from './socialLinks'
+import { ApiRequestError, getPlayerProfile, removeFriendFromList, reportPlayer, sendFriendRequest, updateProfileMedia } from './api'
 import type { AuthUser, PlayerProfile } from './api'
 
 const emit = defineEmits<{
@@ -23,6 +24,7 @@ const mediaDialog = ref<'avatar' | 'cover' | null>(null)
 const mediaDragOver = ref(false)
 const mediaError = ref('')
 const friendBusy = ref(false)
+const removeFriendOpen = ref(false)
 const reportOpen = ref(false)
 const reportBusy = ref(false)
 const reportMessage = ref('')
@@ -35,6 +37,21 @@ const mediaSpecs = {
   cover: { title: 'Изменить шапку', maxWidth: 4096, maxHeight: 1365, recommended: '1920 × 640', maxBytes: 8 * 1024 * 1024, maxSize: '8 МБ' },
 } as const
 const activeMediaSpec = computed(() => mediaDialog.value ? mediaSpecs[mediaDialog.value] : null)
+const profileTabs = [
+  { id: 'overview', label: 'Основное', icon: UserRound },
+  { id: 'statistics', label: 'Статистика', icon: Activity },
+  { id: 'moments', label: 'Моменты', icon: Film },
+  { id: 'friends', label: 'Друзья', icon: Users },
+] as const
+type ProfileTabId = typeof profileTabs[number]['id']
+const activeProfileTab = ref<ProfileTabId>('overview')
+const profileTabElements = ref<HTMLButtonElement[]>([])
+
+function focusProfileTab(index: number) {
+  const nextIndex = (index + profileTabs.length) % profileTabs.length
+  activeProfileTab.value = profileTabs[nextIndex].id
+  nextTick(() => profileTabElements.value[nextIndex]?.focus())
+}
 
 function dismissSuccessToast() {
   if (successToastTimeout !== undefined) window.clearTimeout(successToastTimeout)
@@ -65,6 +82,26 @@ const stats = computed(() => {
     { label: 'Очки', value: values?.points ?? '—', note: 'суммарно', icon: Target },
     { label: 'Серверы', value: values?.servers.length ?? '—', note: 'с результатами', icon: Activity },
     { label: 'Лучший ранг', value: bestRank ?? '—', note: 'среди серверов', icon: Target },
+  ]
+})
+const mapTotals = computed(() => (profile.value?.mapWinRates ?? []).reduce((totals, map) => {
+  totals.matches += map.matches
+  totals.wins += map.wins
+  return totals
+}, { matches: 0, wins: 0 }))
+const detailedStats = computed(() => {
+  const values = profile.value?.stats
+  const { matches, wins } = mapTotals.value
+  return [
+    { label: 'KDR', value: values?.kdr.toFixed(2) ?? '—', note: 'По статистике серверов' },
+    { label: 'Winrate', value: matches ? `${Math.round(wins / matches * 100)}%` : '—', note: matches ? `${wins} побед из ${matches} матчей` : 'Нет данных по матчам' },
+    { label: 'ADR', value: '—', note: 'Нет матчевой статистики' },
+    { label: 'HS%', value: '—', note: 'Нет матчевой статистики' },
+    { label: 'Матчи', value: matches || '—', note: matches ? 'По доступным картам' : 'Нет данных по матчам' },
+    { label: 'Убийства', value: values?.kills ?? '—', note: 'На подключённых серверах' },
+    { label: 'Смерти', value: values?.deaths ?? '—', note: 'На подключённых серверах' },
+    { label: 'Очки', value: values?.points ?? '—', note: 'На подключённых серверах' },
+    { label: 'Частое оружие', value: '—', note: 'Нет данных по оружию' },
   ]
 })
 
@@ -192,7 +229,7 @@ async function addFriend() {
   try {
     const result = await sendFriendRequest(profile.value.nickname)
     profile.value.friendshipStatus = result.status
-    if (result.status === 'pending') actionMessage.value = 'Заявка в друзья отправлена.'
+    if (result.status === 'pending') showSuccessToast('Заявка в друзья отправлена')
   } catch (error) {
     actionMessage.value = error instanceof ApiRequestError && error.status === 401
       ? 'Войдите в аккаунт, чтобы добавить игрока в друзья.'
@@ -201,6 +238,27 @@ async function addFriend() {
     friendBusy.value = false
   }
 }
+
+async function confirmRemoveFriend() {
+  if (!profile.value || friendBusy.value) return
+  friendBusy.value = true
+  try {
+    await removeFriendFromList(profile.value.nickname)
+    profile.value = await getPlayerProfile(profile.value.nickname)
+    removeFriendOpen.value = false
+    showSuccessToast('Пользователь удалён из друзей')
+  } catch (error) {
+    actionMessage.value = error instanceof ApiRequestError ? error.message : 'Не удалось удалить пользователя из друзей.'
+    removeFriendOpen.value = false
+  } finally { friendBusy.value = false }
+}
+
+const socialPlatforms = [
+  { id: 'telegram', label: 'Telegram' }, { id: 'instagram', label: 'Instagram' },
+  { id: 'youtube', label: 'YouTube' }, { id: 'twitch', label: 'Twitch' },
+  { id: 'trovo', label: 'Trovo' }, { id: 'boosty', label: 'Boosty' },
+] as const
+const visibleSocialPlatforms = computed(() => socialPlatforms.filter(({ id }) => profile.value?.socialLinks?.[id]))
 
 function openReportDialog() {
   if (!profile.value) return
@@ -263,10 +321,11 @@ watch(nickname, loadProfile, { immediate: true })
           <strong v-if="profile.isBlocked" class="profile-blocked-notice">Профиль пользователя заблокирован.</strong>
         </div>
         <div v-if="!profile.isOwn && !profile.isBlocked" class="profile-actions">
-          <button v-if="profile.isAuthenticated" class="profile-friend-button" type="button" :disabled="friendBusy || profile.friendshipStatus !== null" @click="addFriend">
-            <UserRoundCheck v-if="profile.friendshipStatus === 'accepted'" :size="16" />
-            <UserPlus v-else :size="16" />
-            {{ friendBusy ? 'Отправляем…' : friendshipLabel }}
+          <button v-if="profile.isAuthenticated && profile.friendshipStatus === 'accepted'" class="profile-friend-button profile-remove-friend-button" type="button" :disabled="friendBusy" @click="removeFriendOpen = true">
+            <UserRoundMinus :size="16" /> Удалить из друзей
+          </button>
+          <button v-else-if="profile.isAuthenticated" class="profile-friend-button" type="button" :disabled="friendBusy || profile.friendshipStatus !== null" @click="addFriend">
+            <UserPlus :size="16" /> {{ friendBusy ? 'Отправляем…' : friendshipLabel }}
           </button>
           <button class="profile-report-button" type="button" @click="openReportDialog"><Flag :size="15" /> Пожаловаться</button>
         </div>
@@ -275,29 +334,99 @@ watch(nickname, loadProfile, { immediate: true })
       <p v-if="actionMessage" class="profile-action-message" role="status">{{ actionMessage }}</p>
     </section>
 
-    <section v-if="!profile.isBlocked" class="profile-section" aria-labelledby="profile-stats-title">
+    <div v-if="!profile.isBlocked" class="profile-tabs" role="tablist" aria-label="Разделы профиля">
+      <button
+        v-for="(tab, index) in profileTabs"
+        :id="`profile-tab-${tab.id}`"
+        :key="tab.id"
+        ref="profileTabElements"
+        class="profile-tab"
+        type="button"
+        role="tab"
+        :aria-selected="activeProfileTab === tab.id"
+        :aria-controls="`profile-panel-${tab.id}`"
+        :tabindex="activeProfileTab === tab.id ? 0 : -1"
+        @click="activeProfileTab = tab.id"
+        @keydown.right.prevent="focusProfileTab(index + 1)"
+        @keydown.left.prevent="focusProfileTab(index - 1)"
+        @keydown.home.prevent="focusProfileTab(0)"
+        @keydown.end.prevent="focusProfileTab(profileTabs.length - 1)"
+      >
+        <component :is="tab.icon" :size="15" :stroke-width="1.8" />
+        <span>{{ tab.label }}</span>
+      </button>
+    </div>
+
+    <Transition name="profile-tab-swap" mode="out-in">
+    <div
+      v-if="!profile.isBlocked && activeProfileTab === 'overview'"
+      id="profile-panel-overview"
+      class="profile-tab-panel"
+      role="tabpanel"
+      aria-labelledby="profile-tab-overview"
+      tabindex="0"
+    >
+    <section class="profile-section" aria-labelledby="profile-stats-title">
       <div class="section-heading">
-        <div><div class="section-kicker">PLAYER PERFORMANCE</div><h2 id="profile-stats-title">Статистика игрока</h2></div>
+        <div><div class="section-kicker">PLAYER PERFORMANCE</div><h2 id="profile-stats-title">Основная информация</h2></div>
         <span class="section-count">CS <span>STATS</span></span>
       </div>
-      <div class="profile-stat-grid">
-        <article v-for="(stat, index) in stats" :key="stat.label" class="profile-stat-item">
-          <div class="profile-stat-label"><component :is="stat.icon" :size="15" /><span>{{ stat.label }}</span><span class="profile-stat-index">0{{ index + 1 }}</span></div>
-          <strong>{{ stat.value }}</strong>
-          <small>{{ stat.note }}</small>
-        </article>
-      </div>
-      <p v-if="!profile.stats" class="profile-data-note">Статистика появится после привязки Steam ID и обновления данных сервера.</p>
-      <div v-else class="profile-server-stats">
-        <article v-for="server in profile.stats.servers" :key="server.serverId" class="profile-server-stat-row">
-          <div class="profile-server-stat-name"><strong>{{ server.serverName }}</strong><span>{{ server.rank === null ? 'Ранг не указан' : `Ранг ${server.rank}` }}</span></div>
-          <div class="profile-server-stat-values"><span>{{ server.kills }} убийств</span><span>{{ server.deaths }} смертей</span><span>{{ server.points }} очков</span></div>
-          <RouterLink class="profile-server-stat-link" :to="{ name: 'stats', query: { server: server.serverId } }">Открыть сервер</RouterLink>
-        </article>
+      <div class="profile-overview-grid">
+        <div class="profile-overview-main">
+          <div class="profile-stat-grid">
+            <article v-for="(stat, index) in stats" :key="stat.label" class="profile-stat-item">
+              <div class="profile-stat-label"><component :is="stat.icon" :size="15" /><span>{{ stat.label }}</span><span class="profile-stat-index">0{{ index + 1 }}</span></div>
+              <strong>{{ stat.value }}</strong>
+              <small>{{ stat.note }}</small>
+            </article>
+          </div>
+          <div v-if="profile.stats" class="profile-server-stats">
+            <article v-for="server in profile.stats.servers" :key="server.serverId" class="profile-server-stat-row">
+              <div class="profile-server-stat-name"><strong>{{ server.serverName }}</strong><span>{{ server.rank === null ? 'Ранг не указан' : `Ранг ${server.rank}` }}</span></div>
+              <div class="profile-server-stat-values"><span>{{ server.kills }} убийств</span><span>{{ server.deaths }} смертей</span><span>{{ server.points }} очков</span></div>
+              <RouterLink class="profile-server-stat-link" :to="{ name: 'stats', query: { server: server.serverId } }">Открыть сервер</RouterLink>
+            </article>
+          </div>
+        </div>
+        <div class="profile-overview-aside">
+          <section class="profile-aside-card" aria-labelledby="profile-social-title">
+            <div class="profile-aside-title"><Share2 :size="15" /><h3 id="profile-social-title">Социальные сети</h3></div>
+            <div v-if="visibleSocialPlatforms.length" class="profile-social-links">
+              <a v-for="platform in visibleSocialPlatforms" :key="platform.id" class="profile-social-link" :href="socialProfileUrl(platform.id, profile?.socialLinks?.[platform.id]) ?? undefined" target="_blank" rel="noopener noreferrer"><Share2 :size="13" /> {{ platform.label }} <span aria-hidden="true">↗</span></a>
+            </div>
+            <p v-else class="profile-aside-note">Пользователь пока не добавил ссылки на социальные сети.</p>
+          </section>
+          <section class="profile-aside-card" aria-labelledby="profile-friends-mini-title">
+            <div class="profile-aside-title"><Users :size="15" /><h3 id="profile-friends-mini-title">Друзья</h3><button v-if="profile.friends.length" class="profile-friends-open" type="button" @click="activeProfileTab = 'friends'">Все друзья · {{ profile.friends.length }}</button></div>
+            <template v-if="profile.friends.length">
+              <div class="profile-friends-stack">
+                <RouterLink
+                  v-for="friend in profile.friends.slice(0, 5)"
+                  :key="friend.id"
+                  class="profile-friends-stack-item"
+                  :to="{ name: 'profile', params: { nickname: friend.nickname } }"
+                  :title="friend.nickname"
+                  :aria-label="`Открыть профиль ${friend.nickname}`"
+                >
+                  <img v-if="friend.avatarUrl" :src="friend.avatarUrl" alt="" />
+                  <template v-else>{{ friend.nickname.slice(0, 1).toUpperCase() }}</template>
+                </RouterLink>
+                <button
+                  v-if="profile.friends.length > 5"
+                  class="profile-friends-stack-item profile-friends-stack-more"
+                  type="button"
+                  :title="`Все друзья: ${profile.friends.length}`"
+                  @click="activeProfileTab = 'friends'"
+                >+{{ profile.friends.length - 5 }}</button>
+              </div>
+            </template>
+            <p v-else class="profile-aside-note">Список друзей пока пуст. Принятые друзья игрока появятся здесь.</p>
+          </section>
+        </div>
       </div>
     </section>
 
-    <section v-if="!profile.isBlocked" class="profile-section" aria-labelledby="profile-matches-title">
+    <section class="profile-section" aria-labelledby="profile-matches-title">
       <div class="section-heading">
         <div><div class="section-kicker">RECENT ACTIVITY</div><h2 id="profile-matches-title">Последние матчи</h2></div>
         <span class="section-count">{{ profile.recentMatches.length.toString().padStart(2, '0') }} <span>МАТЧЕЙ</span></span>
@@ -310,7 +439,7 @@ watch(nickname, loadProfile, { immediate: true })
       />
     </section>
 
-    <section v-if="!profile.isBlocked" class="profile-section" aria-labelledby="map-winrate-title">
+    <section class="profile-section" aria-labelledby="map-winrate-title">
       <div class="section-heading">
         <div><div class="section-kicker">MAP PERFORMANCE</div><h2 id="map-winrate-title">Винрейт по картам</h2></div>
         <span class="section-count">{{ profile.mapWinRates.length.toString().padStart(2, '0') }} <span>КАРТ</span></span>
@@ -328,11 +457,105 @@ watch(nickname, loadProfile, { immediate: true })
         <div><strong>Нет данных по картам</strong><span>Винрейт появится после завершённых матчей.</span></div>
       </div>
     </section>
+    </div>
+
+    <section
+      v-else-if="!profile.isBlocked && activeProfileTab === 'statistics'"
+      id="profile-panel-statistics"
+      class="profile-tab-panel profile-section"
+      role="tabpanel"
+      aria-labelledby="profile-tab-statistics"
+      tabindex="0"
+    >
+      <div class="section-heading">
+        <div><div class="section-kicker">PLAYER PERFORMANCE</div><h2>Подробная статистика</h2></div>
+        <span class="section-count">CS <span>STATS</span></span>
+      </div>
+      <div class="profile-detail-grid">
+        <article v-for="stat in detailedStats" :key="stat.label" class="profile-detail-card">
+          <span class="profile-detail-label">{{ stat.label }}</span>
+          <strong>{{ stat.value }}</strong>
+          <small>{{ stat.note }}</small>
+        </article>
+      </div>
+      <p class="profile-data-note">ADR, HS% и популярное оружие появятся после подключения матчевой статистики.</p>
+
+      <section class="profile-section" aria-labelledby="profile-detail-maps-title">
+        <div class="section-heading">
+          <div><div class="section-kicker">MAP PERFORMANCE</div><h2 id="profile-detail-maps-title">Winrate по картам</h2></div>
+          <span class="section-count">{{ profile.mapWinRates.length.toString().padStart(2, '0') }} <span>КАРТ</span></span>
+        </div>
+        <div v-if="profile.mapWinRates.length" class="map-winrate-list">
+          <article v-for="map in profile.mapWinRates" :key="map.map" class="map-winrate-row">
+            <strong>{{ map.map }}</strong>
+            <div class="map-winrate-track"><span :style="{ width: `${map.winRate}%` }"></span></div>
+            <span class="map-winrate-value">{{ map.winRate }}%</span>
+            <small>{{ map.wins }} / {{ map.matches }} побед</small>
+          </article>
+        </div>
+        <div v-else class="empty-state section-empty map-winrate-empty">
+          <span class="empty-icon"><Target :size="21" /></span>
+          <div><strong>Нет данных по картам</strong><span>Винрейт появится после завершённых матчей.</span></div>
+        </div>
+      </section>
+    </section>
+
+    <section
+      v-else-if="!profile.isBlocked && activeProfileTab === 'moments'"
+      id="profile-panel-moments"
+      class="profile-tab-panel profile-section"
+      role="tabpanel"
+      aria-labelledby="profile-tab-moments"
+      tabindex="0"
+    >
+      <div class="section-heading">
+        <div><div class="section-kicker">MATCH HIGHLIGHTS</div><h2>Моменты игрока</h2></div>
+        <span class="section-count">MVP</span>
+      </div>
+      <div class="empty-state section-empty profile-tab-empty">
+        <span class="empty-icon"><Film :size="21" /></span>
+        <div><strong>MVP-матчи пока недоступны</strong><span>Здесь появятся матчи, где игрок стал MVP, когда подключится источник матчевой статистики.</span></div>
+      </div>
+    </section>
+
+    <section
+      v-else-if="!profile.isBlocked && activeProfileTab === 'friends'"
+      id="profile-panel-friends"
+      class="profile-tab-panel profile-section"
+      role="tabpanel"
+      aria-labelledby="profile-tab-friends"
+      tabindex="0"
+    >
+      <div class="section-heading">
+        <div><div class="section-kicker">MATCHSTRIKE / SOCIAL</div><h2>Друзья игрока</h2></div>
+        <span class="section-count">{{ profile.friends.length.toString().padStart(2, '0') }} <span>ДРУЗЕЙ</span></span>
+      </div>
+      <div v-if="profile.friends.length" class="friends-list profile-friends-list">
+        <article v-for="friend in profile.friends" :key="friend.id" class="friend-row">
+          <RouterLink class="friend-request-avatar-link" :to="{ name: 'profile', params: { nickname: friend.nickname } }" :aria-label="`Открыть профиль ${friend.nickname}`">
+            <span v-if="friend.avatarUrl" class="friend-avatar-wrap"><img class="friend-avatar" :src="friend.avatarUrl" alt="" /></span>
+            <span v-else class="friend-avatar friend-avatar-fallback">{{ friend.nickname.slice(0, 1).toUpperCase() }}</span>
+          </RouterLink>
+          <div class="friend-details">
+            <RouterLink class="friend-request-nickname" :to="{ name: 'profile', params: { nickname: friend.nickname } }">{{ friend.nickname }}</RouterLink>
+            <span class="friend-last-seen">Профиль MatchStrike</span>
+          </div>
+          <RouterLink class="friend-action friend-profile-action" :to="{ name: 'profile', params: { nickname: friend.nickname } }">
+            <UserRound :size="15" /> Профиль
+          </RouterLink>
+        </article>
+      </div>
+      <div v-else class="empty-state section-empty friends-empty">
+        <span class="empty-icon"><Users :size="21" /></span>
+        <div><strong>Список друзей пока пуст</strong><span>Принятые друзья игрока появятся здесь.</span></div>
+      </div>
+    </section>
+    </Transition>
 
     <Teleport to="body">
       <Transition name="profile-toast">
         <div v-if="successToast" class="profile-toast" role="status" aria-live="polite" aria-atomic="true">
-          <span class="profile-toast-icon"><Check :size="15" :stroke-width="2.5" /></span>
+          <span class="profile-toast-icon motion-safe:animate-pulse"><Check :size="15" :stroke-width="2.5" /></span>
           <span class="profile-toast-message">{{ successToast }}</span>
           <button class="profile-toast-close" type="button" aria-label="Закрыть уведомление" @click="dismissSuccessToast"><X :size="15" /></button>
         </div>
@@ -400,6 +623,17 @@ watch(nickname, loadProfile, { immediate: true })
         </div>
       </Transition>
     </Teleport>
+    </div>
+  </Transition>
+  <Transition name="modal">
+    <div v-if="removeFriendOpen" class="modal-backdrop" @click.self="removeFriendOpen = false" @keydown.esc="removeFriendOpen = false">
+      <section class="info-dialog profile-remove-friend-dialog" role="dialog" aria-modal="true" aria-labelledby="remove-friend-title">
+        <button class="dialog-close" type="button" aria-label="Закрыть" :disabled="friendBusy" @click="removeFriendOpen = false"><X :size="17" /></button>
+        <span class="dialog-mark"><Users :size="20" /></span>
+        <h2 id="remove-friend-title">Удалить из друзей?</h2>
+        <p>Вы уверены, что хотите удалить {{ profile?.nickname }} из списка друзей?</p>
+        <div class="dialog-actions"><button class="dialog-secondary" type="button" :disabled="friendBusy" @click="removeFriendOpen = false">Отмена</button><button class="profile-confirm-remove" type="button" :disabled="friendBusy" @click="confirmRemoveFriend">{{ friendBusy ? 'Удаляем…' : 'Удалить из друзей' }}</button></div>
+      </section>
     </div>
   </Transition>
 </template>

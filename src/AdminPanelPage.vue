@@ -45,7 +45,7 @@ const usersRoleFilter = ref<AdminRole | 'none' | ''>('')
 const usersLoading = ref(false)
 const usersSearchError = ref('')
 const selectedUser = ref<AdminUserSummary | null>(null)
-const userForm = ref({ nickname: '', email: '', adminRole: null as AdminRole | null, isBlocked: false })
+const userForm = ref({ nickname: '', email: '', steamId: '', adminRole: null as AdminRole | null, isBlocked: false })
 const passwordForm = ref({ password: '', confirmation: '' })
 const passwordEditorOpen = ref(false)
 const userAction = ref<'save' | 'role' | 'password' | 'block' | 'media' | 'delete' | null>(null)
@@ -150,6 +150,7 @@ function openUserSettings(user: AdminUserSummary) {
   userForm.value = {
     nickname: user.nickname,
     email: user.email,
+    steamId: user.steamId ?? '',
     adminRole: user.adminRole,
     isBlocked: user.isBlocked,
   }
@@ -175,6 +176,7 @@ function updateUserInList(user: AdminUserSummary) {
   userForm.value = {
     nickname: user.nickname,
     email: user.email,
+    steamId: user.steamId ?? '',
     adminRole: user.adminRole,
     isBlocked: user.isBlocked,
   }
@@ -188,6 +190,7 @@ async function saveUser() {
     updateUserInList(await updateAdminUser(selectedUser.value.id, {
       nickname: userForm.value.nickname,
       email: userForm.value.email,
+      steamId: userForm.value.steamId.trim() || null,
     }))
   } catch (requestError) {
     userDialogError.value = requestError instanceof Error ? requestError.message : 'Не удалось сохранить пользователя.'
@@ -730,6 +733,10 @@ watch(section, (next, previous) => {
             <label class="auth-field">
               <span>Email</span>
               <input v-model.trim="userForm.email" class="auth-input" type="email" maxlength="254" required autocomplete="off" />
+            </label>
+            <label class="auth-field">
+              <span>Steam ID</span>
+              <input v-model.trim="userForm.steamId" class="auth-input" type="text" maxlength="32" autocomplete="off" placeholder="76561198000000000 или STEAM_0:1:12345678" />
             </label>
             <label class="auth-field">
               <span>Админ-роль</span>
