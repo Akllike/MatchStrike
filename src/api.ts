@@ -204,6 +204,16 @@ export interface AppNotification {
   createdAt: string | null
 }
 
+export type NotificationCategory = 'system' | 'friend_request' | 'friend_acceptance' | 'team_invitation'
+export type NotificationPreferences = Record<'enabled' | NotificationCategory, boolean>
+export interface NotificationSettings {
+  preferences: NotificationPreferences
+  pushSupported: boolean
+  pushConfigured: boolean
+  pushPublicKey: string | null
+  subscriptionCount: number
+}
+
 export interface FriendRequestResult {
   status: 'pending' | 'incoming' | 'accepted'
   alreadySent?: boolean
@@ -501,6 +511,29 @@ export async function getAppNotifications(): Promise<{ notifications: AppNotific
     headers: { Accept: 'application/json' },
   })
   return readJson<{ notifications: AppNotification[]; unreadCount: number }>(response)
+}
+
+export async function getNotificationSettings(): Promise<NotificationSettings> {
+  const response = await fetch(`${apiBaseUrl}/me/notification-settings`, { credentials: 'include', headers: { Accept: 'application/json' } })
+  return readJson<NotificationSettings>(response)
+}
+
+export async function updateNotificationPreferences(preferences: NotificationPreferences): Promise<NotificationPreferences> {
+  const response = await mutateJson<{ preferences: NotificationPreferences }>(`${apiBaseUrl}/me/notification-settings`, 'PUT', { preferences })
+  return response.preferences
+}
+
+export async function savePushSubscription(subscription: PushSubscription): Promise<void> {
+  const json = subscription.toJSON()
+  await postJson(`${apiBaseUrl}/me/push-subscriptions`, {
+    endpoint: json.endpoint,
+    keys: json.keys,
+    contentEncoding: PushManager.supportedContentEncodings?.[0] ?? 'aes128gcm',
+  })
+}
+
+export async function deletePushSubscription(endpoint: string): Promise<void> {
+  await mutateJson(`${apiBaseUrl}/me/push-subscriptions`, 'DELETE', { endpoint })
 }
 
 export async function markAppNotificationRead(notificationId: number): Promise<void> {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
-import { Camera, KeyRound, Link2, LogOut, Mail, Monitor, Share2, Shield, ShieldCheck, Trash2, Upload, UserRound, X } from '@lucide/vue'
+import { Bell, Camera, KeyRound, Link2, LogOut, Mail, Monitor, Share2, Shield, ShieldCheck, Trash2, Upload, UserRound, X } from '@lucide/vue'
 import QRCode from 'qrcode'
 import PageLoader from './components/PageLoader.vue'
 import { socialIdFromValue } from './socialLinks'
@@ -12,21 +12,25 @@ import {
   disableGoogleAuthenticator,
   getAccountSessions,
   getCurrentUser,
+  getNotificationSettings,
   revokeAccountSession,
   revokeOtherAccountSessions,
+  deletePushSubscription,
+  savePushSubscription,
   setupGoogleAuthenticator,
   updateAccountSettings,
   updateAccountSteamId,
   updateSocialLinks,
+  updateNotificationPreferences,
   updateProfileMedia,
 } from './api'
-import type { AccountSession, AuthUser } from './api'
+import type { AccountSession, AuthUser, NotificationCategory, NotificationSettings } from './api'
 
 const emit = defineEmits<{
   accountUpdated: [user: AuthUser]
 }>()
 
-type SettingsTab = 'general' | 'social' | 'security'
+type SettingsTab = 'general' | 'social' | 'notifications' | 'security'
 type MediaField = 'avatar' | 'cover'
 
 const mediaSpecs: Record<MediaField, { maxBytes: number; maxWidth: number; maxHeight: number; maxSize: string }> = {
@@ -81,6 +85,17 @@ const twoFactorCode = ref('')
 const twoFactorBusy = ref(false)
 const twoFactorError = ref('')
 const twoFactorMessage = ref('')
+const notificationSettings = ref<NotificationSettings | null>(null)
+const notificationBusy = ref(false)
+const pushEnabled = ref(false)
+const notificationMessage = ref('')
+const notificationError = ref('')
+const notificationCategories: { id: NotificationCategory; title: string; description: string }[] = [
+  { id: 'system', title: 'Системные сообщения', description: 'Объявления и важные сообщения сайта.' },
+  { id: 'friend_request', title: 'Заявки в друзья', description: 'Когда кто-то отправляет вам заявку в друзья.' },
+  { id: 'friend_acceptance', title: 'Принятие заявок', description: 'Когда вашу заявку в друзья принимают.' },
+  { id: 'team_invitation', title: 'Приглашения в команду', description: 'Когда вас приглашают в команду.' },
+]
 
 const emailChanged = computed(() => account.value !== null && accountForm.email.trim().toLowerCase() !== account.value.email)
 const nicknameChanged = computed(() => account.value !== null && accountForm.nickname.trim() !== account.value.nickname)
@@ -136,10 +151,123 @@ async function loadAccount() {
     if (!user) return
     applyAccount(user)
     await loadSessions()
+    await loadNotificationSettings()
   } catch {
     pageMessage.value = 'Не удалось загрузить аккаунт. Обновите страницу.'
   } finally {
     loading.value = false
+  }
+}
+
+async function loadNotificationSettings() {
+  try {
+    notificationSettings.value = await getNotificationSettings()
+    await syncBrowserPushState()
+  } catch (error) {
+    notificationError.value = error instanceof Error ? error.message : 'Не удалось загрузить настройки уведомлений.'
+  }
+}
+
+async function syncBrowserPushState() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    pushEnabled.value = false
+    return
+  }
+  const registration = await navigator.serviceWorker.getRegistration('/sw.js')
+  const subscription = await registration?.pushManager.getSubscription()
+  pushEnabled.value = Boolean(subscription && Notification.permission === 'granted')
+}
+
+function decodeVapidKey(value: string): Uint8Array {
+  const padding = '='.repeat((4 - value.length % 4) % 4)
+  const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const raw = atob(base64)
+  return Uint8Array.from(raw, (character) => character.charCodeAt(0))
+}
+
+async function enableBrowserPush(): Promise<boolean> {
+  const settings = notificationSettings.value
+  if (!settings?.pushSupported || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    notificationMessage.value = 'Этот браузер не поддерживает push-уведомления.'
+    return false
+  }
+  if (!settings.pushConfigured || !settings.pushPublicKey) {
+    notificationMessage.value = 'Push-уведомления не настроены на сервере. Уведомления сайта будут доступны в браузере.'
+    return false
+  }
+  const permission = await Notification.requestPermission()
+  if (permission !== 'granted') {
+    notificationMessage.value = 'Разрешите уведомления для сайта в настройках браузера.'
+    return false
+  }
+  const registration = await navigator.serviceWorker.register('/sw.js')
+  const subscription = await registration.pushManager.getSubscription() ?? await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: decodeVapidKey(settings.pushPublicKey) as BufferSource,
+  })
+  await savePushSubscription(subscription)
+  settings.subscriptionCount = Math.max(1, settings.subscriptionCount)
+  pushEnabled.value = true
+  return true
+}
+
+async function updateBrowserPush(value: boolean) {
+  if (notificationBusy.value || !notificationSettings.value) return
+  notificationBusy.value = true
+  notificationError.value = ''
+  notificationMessage.value = ''
+  try {
+    if (value) {
+      if (!notificationSettings.value.preferences.enabled) {
+        notificationMessage.value = 'Сначала включите уведомления аккаунта.'
+        return
+      }
+      if (await enableBrowserPush()) notificationMessage.value = 'Push-уведомления включены в этом браузере.'
+    } else if ('serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.getRegistration('/sw.js')
+      const subscription = await registration?.pushManager.getSubscription()
+      if (subscription) {
+        await deletePushSubscription(subscription.endpoint)
+        await subscription.unsubscribe()
+      }
+      pushEnabled.value = false
+      if (notificationSettings.value.subscriptionCount > 0) notificationSettings.value.subscriptionCount -= 1
+      notificationMessage.value = 'Push-уведомления отключены в этом браузере.'
+    }
+  } catch (error) {
+    notificationError.value = error instanceof Error ? error.message : 'Не удалось изменить настройку push-уведомлений.'
+    await syncBrowserPushState()
+  } finally {
+    notificationBusy.value = false
+  }
+}
+
+async function updateNotificationSetting(key: 'enabled' | NotificationCategory, value: boolean) {
+  const settings = notificationSettings.value
+  if (!settings || notificationBusy.value) return
+  notificationBusy.value = true
+  notificationError.value = ''
+  notificationMessage.value = ''
+  const previousPreferences = settings.preferences
+  const next = { ...settings.preferences, [key]: value }
+  try {
+    settings.preferences = await updateNotificationPreferences(next)
+    if (key === 'enabled' && !value && 'serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.getRegistration('/sw.js')
+      const subscription = await registration?.pushManager.getSubscription()
+      if (subscription) {
+        await deletePushSubscription(subscription.endpoint)
+        await subscription.unsubscribe()
+        pushEnabled.value = false
+        settings.subscriptionCount = 0
+      }
+    }
+    if (!notificationMessage.value) notificationMessage.value = value ? 'Настройки уведомлений сохранены.' : 'Уведомления отключены.'
+  } catch (error) {
+    settings.preferences = previousPreferences
+    notificationError.value = error instanceof Error ? error.message : 'Не удалось сохранить настройки уведомлений.'
+  } finally {
+    notificationBusy.value = false
   }
 }
 
@@ -534,6 +662,7 @@ onMounted(loadAccount)
     <div class="settings-tabs" role="tablist" aria-label="Настройки аккаунта">
       <button id="settings-tab-general" class="settings-tab" type="button" role="tab" :aria-selected="activeTab === 'general'" aria-controls="settings-panel-general" @click="activeTab = 'general'"><UserRound :size="15" /> Основные</button>
       <button id="settings-tab-social" class="settings-tab" type="button" role="tab" :aria-selected="activeTab === 'social'" aria-controls="settings-panel-social" @click="activeTab = 'social'"><Share2 :size="15" /> Социальные сети</button>
+      <button id="settings-tab-notifications" class="settings-tab" type="button" role="tab" :aria-selected="activeTab === 'notifications'" aria-controls="settings-panel-notifications" @click="activeTab = 'notifications'"><Bell :size="15" /> Уведомления</button>
       <button id="settings-tab-security" class="settings-tab" type="button" role="tab" :aria-selected="activeTab === 'security'" aria-controls="settings-panel-security" @click="activeTab = 'security'"><ShieldCheck :size="15" /> Безопасность</button>
     </div>
 
@@ -595,6 +724,34 @@ onMounted(loadAccount)
         <p v-if="socialMessage" class="settings-message" role="status">{{ socialMessage }}</p>
         <div class="settings-actions"><span>Ссылки открываются в новой вкладке</span><button class="dialog-primary" type="submit" :disabled="socialBusy">{{ socialBusy ? 'Сохраняем…' : 'Сохранить ссылки' }}</button></div>
       </form>
+    </section>
+    <section v-else-if="activeTab === 'notifications'" id="settings-panel-notifications" class="section-panel settings-panel" role="tabpanel" aria-labelledby="settings-tab-notifications">
+      <div class="panel-heading"><div><div class="section-kicker">NOTIFICATION PREFERENCES</div><h2>Уведомления</h2></div><span class="settings-panel-icon"><Bell :size="17" /></span></div>
+      <div v-if="notificationSettings" class="settings-block settings-form">
+        <div class="push-control-card">
+          <div class="push-control-copy">
+            <strong>Push-уведомления</strong>
+            <span>Получайте уведомления браузера, когда сайт закрыт. Настройка действует отдельно для этого браузера и устройства.</span>
+            <small>{{ pushEnabled ? 'Push включены в этом браузере.' : 'Push выключены в этом браузере.' }}</small>
+          </div>
+          <button :class="pushEnabled ? 'settings-remove-button' : 'dialog-primary'" type="button" :disabled="notificationBusy || !notificationSettings.preferences.enabled || !notificationSettings.pushSupported" @click="updateBrowserPush(!pushEnabled)">
+            {{ pushEnabled ? 'Выключить push' : 'Включить push' }}
+          </button>
+        </div>
+        <p class="settings-description">{{ notificationSettings.pushConfigured ? 'Push работает в этом браузере после получения разрешения.' : 'Для push нужно установить Web Push зависимость и задать VAPID ключи на сервере.' }}</p>
+        <p v-if="notificationMessage" class="settings-message" role="status">{{ notificationMessage }}</p>
+        <p v-if="notificationError" class="auth-message" role="alert">{{ notificationError }}</p>
+        <div class="notification-setting-row notification-master-row">
+          <div><strong>Уведомления аккаунта</strong><span>Показывать выбранные события в центре уведомлений сайта.</span></div>
+          <label class="settings-switch"><input type="checkbox" :checked="notificationSettings.preferences.enabled" :disabled="notificationBusy" @change="updateNotificationSetting('enabled', ($event.target as HTMLInputElement).checked)" /><span aria-hidden="true"></span></label>
+        </div>
+        <div v-for="category in notificationCategories" :key="category.id" class="notification-setting-row">
+          <div><strong>{{ category.title }}</strong><span>{{ category.description }}</span></div>
+          <label class="settings-switch"><input type="checkbox" :checked="notificationSettings.preferences[category.id]" :disabled="notificationBusy || !notificationSettings.preferences.enabled" @change="updateNotificationSetting(category.id, ($event.target as HTMLInputElement).checked)" /><span aria-hidden="true"></span></label>
+        </div>
+      </div>
+      <p v-else-if="notificationError" class="auth-message" role="alert">{{ notificationError }}</p>
+      <p v-else class="settings-description">Загружаем параметры уведомлений…</p>
     </section>
     <section v-else id="settings-panel-security" class="section-panel settings-panel" role="tabpanel" aria-labelledby="settings-tab-security">
       <div class="panel-heading"><div><div class="section-kicker">ACCOUNT SECURITY</div><h2>Безопасность</h2></div><span class="settings-panel-icon"><ShieldCheck :size="17" /></span></div>
