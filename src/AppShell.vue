@@ -24,8 +24,8 @@ import {
   Users,
   X,
 } from '@lucide/vue'
-import { ApiRequestError, clearAppNotifications, getAppNotifications, getCurrentUser, loginAccount, logoutAccount, markAllAppNotificationsRead, markAppNotificationRead, registerAccount } from './api'
-import type { AppNotification, AuthUser, LoginPayload, RegisterPayload } from './api'
+import { ApiRequestError, clearAppNotifications, getAppNotifications, getCurrentUser, getNotificationSettings, loginAccount, logoutAccount, markAllAppNotificationsRead, markAppNotificationRead, registerAccount, savePushSubscription } from './api'
+import type { AppNotification, AuthUser, LoginPayload, NotificationSettings, RegisterPayload } from './api'
 import { adminLandingPath } from './adminAccess'
 
 type AuthMode = 'login' | 'register' | 'help' | 'privacy' | 'required' | null
@@ -60,6 +60,11 @@ const notificationsError = ref('')
 const unreadNotificationCount = ref(0)
 let notificationsPollTimer: number | undefined
 let notificationsRequestPending = false
+const pushPromptVisible = ref(false)
+const pushPromptBusy = ref(false)
+const pushFollowupMessage = ref('')
+const pushPromptSettings = ref<NotificationSettings | null>(null)
+let pushFollowupTimer: number | undefined
 const authBusy = ref(false)
 const authMessage = ref('')
 const authErrors = ref<Record<string, string[]>>({})
@@ -228,6 +233,137 @@ async function clearNotifications() {
 function notificationDateLabel(createdAt: string | null): string {
   if (!createdAt) return ''
   return new Date(createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
+function pushPromptDismissedKey(userId: number): string {
+  return `matchstrike.push-prompt-dismissed.${userId}`
+}
+
+function hasDismissedPushPrompt(userId: number): boolean {
+  try {
+    return localStorage.getItem(pushPromptDismissedKey(userId)) === 'yes'
+  } catch {
+    return false
+  }
+}
+
+function rememberPushPromptDismissed(userId: number) {
+  try {
+    localStorage.setItem(pushPromptDismissedKey(userId), 'yes')
+  } catch {
+    return
+  }
+}
+
+function showPushFollowup(message: string) {
+  pushFollowupMessage.value = message
+  if (pushFollowupTimer !== undefined) window.clearTimeout(pushFollowupTimer)
+  pushFollowupTimer = window.setTimeout(() => {
+    pushFollowupMessage.value = ''
+    pushFollowupTimer = undefined
+  }, 6500)
+}
+
+function closePushFollowup() {
+  pushFollowupMessage.value = ''
+  if (pushFollowupTimer !== undefined) {
+    window.clearTimeout(pushFollowupTimer)
+    pushFollowupTimer = undefined
+  }
+}
+
+async function checkPushPrompt(userId: number) {
+  pushPromptVisible.value = false
+  pushPromptSettings.value = null
+  if (hasDismissedPushPrompt(userId)) return
+
+  try {
+    const settings = await getNotificationSettings()
+    if (currentUser.value?.id !== userId) return
+    if (!settings.pushConfigured || !settings.preferences.enabled) return
+
+    if ('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window) {
+      const registration = await navigator.serviceWorker.getRegistration('/sw.js')
+      const subscription = await registration?.pushManager.getSubscription()
+      if (subscription && Notification.permission === 'granted') return
+    }
+
+    pushPromptSettings.value = settings
+    pushPromptVisible.value = true
+  } catch {
+    pushPromptVisible.value = false
+  }
+}
+
+function dismissPushPrompt() {
+  const userId = currentUser.value?.id
+  pushPromptVisible.value = false
+  if (userId) rememberPushPromptDismissed(userId)
+  showPushFollowup('Push-уведомления можно включить позже в настройках профиля.')
+}
+
+function decodePushPublicKey(value: string): Uint8Array {
+  const padding = '='.repeat((4 - value.length % 4) % 4)
+  const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const raw = atob(base64)
+  return Uint8Array.from(raw, (character) => character.charCodeAt(0))
+}
+
+function iosPushHelp(): string | null {
+  const iosDevice = /iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  if (!iosDevice) return null
+  const standalone = window.matchMedia('(display-mode: standalone)').matches
+    || ('standalone' in navigator && navigator.standalone === true)
+  return standalone
+    ? 'Не удалось включить push в веб-приложении. Проверьте разрешение уведомлений MatchStrike в настройках iOS.'
+    : 'На iPhone и iPad push доступны в установленном веб-приложении: Safari → «Поделиться» → «На экран “Домой”». Затем откройте MatchStrike с новой иконки и включите push.'
+}
+
+async function enablePushFromPrompt() {
+  if (pushPromptBusy.value) return
+  pushPromptBusy.value = true
+  try {
+    const settings = pushPromptSettings.value
+    if (!settings?.pushConfigured || !settings.pushPublicKey) {
+      showPushFollowup('Push-уведомления пока не настроены на сервере.')
+      return
+    }
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+      pushPromptVisible.value = false
+      showPushFollowup(iosPushHelp() ?? 'Этот браузер не поддерживает push-уведомления.')
+      return
+    }
+
+    const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission()
+    if (permission !== 'granted') {
+      pushPromptVisible.value = false
+      showPushFollowup(permission === 'denied'
+        ? 'Разрешите уведомления для MatchStrike в настройках браузера.'
+        : 'Разрешение на уведомления не выдано. Его можно изменить в настройках браузера.')
+      return
+    }
+
+    const registration = await navigator.serviceWorker.register('/sw.js')
+    const subscription = await registration.pushManager.getSubscription() ?? await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: decodePushPublicKey(settings.pushPublicKey) as BufferSource,
+    })
+    try {
+      await savePushSubscription(subscription)
+    } catch (error) {
+      await subscription.unsubscribe()
+      throw error
+    }
+    pushPromptVisible.value = false
+    settings.subscriptionCount = Math.max(1, settings.subscriptionCount)
+    showPushFollowup('Push-уведомления включены в этом браузере.')
+  } catch (error) {
+    pushPromptVisible.value = false
+    showPushFollowup(error instanceof Error ? error.message : 'Не удалось включить push-уведомления.')
+  } finally {
+    pushPromptBusy.value = false
+  }
 }
 
 function toggleSidebar() {
@@ -475,6 +611,7 @@ async function submitAuth() {
     unreadNotificationCount.value = 0
     lastSessionRefreshAt = Date.now()
     void refreshNotifications()
+    void checkPushPrompt(user.id)
     const redirect = authRedirect.value
     closeDialog(false)
     if (redirect) await router.replace(redirect)
@@ -498,6 +635,7 @@ async function signOut() {
     currentUser.value = null
     notifications.value = []
     unreadNotificationCount.value = 0
+    pushPromptVisible.value = false
     profileMenuOpen.value = false
     await router.replace({ name: 'home' })
   } catch {
@@ -527,17 +665,22 @@ function refreshSessionOnActivity() {
   }).catch(() => undefined)
 }
 
+function refreshNotificationsWhenVisible() {
+  if (document.visibilityState === 'visible') void refreshNotifications()
+}
+
 onMounted(async () => {
   document.addEventListener('pointerdown', closeProfileMenuOnOutsideClick)
   window.addEventListener('keydown', closeHeaderPopoversOnEscape)
   window.addEventListener('keydown', handleMobileMenuKeydown)
   window.addEventListener('resize', closeMobileMenuOnResize)
+  document.addEventListener('visibilitychange', refreshNotificationsWhenVisible)
   for (const eventName of activityEvents) {
     window.addEventListener(eventName, refreshSessionOnActivity, { passive: true })
   }
   notificationsPollTimer = window.setInterval(() => {
     if (document.visibilityState === 'visible') void refreshNotifications()
-  }, 60_000)
+  }, 10_000)
 
   try {
     const user = await getCurrentUser()
@@ -545,6 +688,7 @@ onMounted(async () => {
       currentUser.value = accountFromUser(user)
       lastSessionRefreshAt = Date.now()
       void refreshNotifications()
+      void checkPushPrompt(user.id)
     }
   } catch {
     currentUser.value = null
@@ -556,15 +700,34 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', closeHeaderPopoversOnEscape)
   window.removeEventListener('keydown', handleMobileMenuKeydown)
   window.removeEventListener('resize', closeMobileMenuOnResize)
+  document.removeEventListener('visibilitychange', refreshNotificationsWhenVisible)
   for (const eventName of activityEvents) {
     window.removeEventListener(eventName, refreshSessionOnActivity)
   }
   if (notificationsPollTimer !== undefined) window.clearInterval(notificationsPollTimer)
+  if (pushFollowupTimer !== undefined) window.clearTimeout(pushFollowupTimer)
 })
 </script>
 
 <template>
   <div id="top" class="site-shell" :class="{ 'is-sidebar-collapsed': sidebarCollapsed, 'is-mobile-menu-open': mobileMenuOpen }">
+    <Transition name="push-onboarding">
+      <aside v-if="pushPromptVisible" class="push-onboarding-alert" role="status" aria-live="polite">
+        <span class="push-onboarding-icon"><Bell :size="17" /></span>
+        <span class="push-onboarding-copy"><strong>Не пропускайте уведомления</strong><span>Включите push, чтобы получать важные события, даже когда сайт закрыт.</span></span>
+        <span class="push-onboarding-actions">
+          <button type="button" class="push-onboarding-enable" :disabled="pushPromptBusy" @click="enablePushFromPrompt">{{ pushPromptBusy ? 'Включаем…' : 'Включить' }}</button>
+          <button type="button" class="push-onboarding-later" :disabled="pushPromptBusy" @click="dismissPushPrompt">Позже</button>
+        </span>
+      </aside>
+    </Transition>
+    <Transition name="push-onboarding">
+      <div v-if="pushFollowupMessage" class="push-onboarding-alert push-onboarding-followup" role="status" aria-live="polite">
+        <span class="push-onboarding-icon"><Bell :size="17" /></span>
+        <span class="push-onboarding-copy"><strong>Уведомления</strong><span>{{ pushFollowupMessage }}</span></span>
+        <button class="push-onboarding-close" type="button" aria-label="Закрыть сообщение" @click="closePushFollowup"><X :size="16" /></button>
+      </div>
+    </Transition>
     <button v-if="mobileMenuOpen" class="mobile-menu-backdrop" type="button" tabindex="-1" aria-label="Закрыть меню" @click="closeMobileMenu()"></button>
     <aside id="site-sidebar" ref="sidebar" class="sidebar" :role="mobileMenuOpen ? 'dialog' : undefined" :aria-modal="mobileMenuOpen ? 'true' : undefined" :aria-label="mobileMenuOpen ? 'Навигация' : undefined">
       <div class="sidebar-brand">

@@ -135,10 +135,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .settings-secret code { color: #0369a1; }
 .settings-block-heading > svg, .settings-actions > span svg { color: #0284c7; }
 .settings-actions > span, .settings-session-info > span { color: #64748b; }
-.profile-toast { color: #115e59; border-color: #99f6e4; background: #f0fdfa; box-shadow: var(--shadow-soft); }
-.profile-toast-icon { color: #fff; background: #0d9488; }
-.profile-toast-close { color: #64748b; }
-.profile-toast-close:hover { color: #0f766e; background: #ccfbf1; }
 
 .modal-backdrop { background: rgba(15,23,42,.38); backdrop-filter: blur(4px); }
 .dialog-mark { color: #fff; background: linear-gradient(145deg, #0ea5e9, #0284c7); }
@@ -208,9 +204,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .dark .auth-input, .dark .settings-form .auth-input { color: #edf4f5; background: #131e2d; border-color: #46596f; }
 .dark .auth-input::placeholder { color: var(--subtle); }
 .dark .modal-backdrop { background: rgba(0,0,0,.62); }
-.dark .profile-toast { color: #a7f3d0; background: #183a32; border-color: #347563; }
-.dark .profile-toast-close { color: #b7d1ca; }
-.dark .profile-toast-close:hover { color: #e2fff4; background: #285346; }
 .dark .admin-danger-button, .dark .settings-remove-button, .dark .admin-user-confirmation, .dark .auth-message { color: #fecaca; background: #44272b; border-color: #87474e; }
 .dark .admin-user-confirmation p, .dark .field-error, .dark .admin-error-inline, .dark .admin-statistics-source .admin-statistics-source-error { color: #fca5a5; }
 .dark .admin-danger-button.is-confirm { color: #fff; background: #b91c1c; border-color: #b91c1c; }

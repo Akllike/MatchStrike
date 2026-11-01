@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
-import { Bell, Camera, KeyRound, Link2, LogOut, Mail, Monitor, Share2, Shield, ShieldCheck, Trash2, Upload, UserRound, X } from '@lucide/vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { Bell, Camera, Check, KeyRound, Link2, LogOut, Mail, Monitor, Share2, Shield, ShieldCheck, Trash2, Upload, UserRound, X } from '@lucide/vue'
 import QRCode from 'qrcode'
 import PageLoader from './components/PageLoader.vue'
 import { socialIdFromValue } from './socialLinks'
@@ -52,7 +52,10 @@ const steamBusy = ref(false)
 const steamMessage = ref('')
 const socialBusy = ref(false)
 const socialMessage = ref('')
+const topToastMessage = ref('')
+const topToastTone = ref<'success' | 'warning'>('success')
 const socialErrors = ref<Record<string, string[]>>({})
+let topToastTimer: number | undefined
 const socialPlatforms = [
   { id: 'telegram', label: 'Telegram', placeholder: 'username' }, { id: 'instagram', label: 'Instagram', placeholder: 'username' },
   { id: 'youtube', label: 'YouTube', placeholder: '@handle или ID канала' }, { id: 'twitch', label: 'Twitch', placeholder: 'username' },
@@ -106,6 +109,31 @@ function errorFor(errors: Record<string, string[]>, field: string): string {
   return errors[field]?.[0] ?? ''
 }
 
+function dismissTopToast() {
+  topToastMessage.value = ''
+  if (topToastTimer !== undefined) {
+    window.clearTimeout(topToastTimer)
+    topToastTimer = undefined
+  }
+}
+
+function showTopToast(message: string, tone: 'success' | 'warning' = 'success') {
+  topToastMessage.value = message
+  topToastTone.value = tone
+  if (topToastTimer !== undefined) window.clearTimeout(topToastTimer)
+  topToastTimer = window.setTimeout(dismissTopToast, 5000)
+}
+
+function setNotificationFeedback(message: string, tone: 'success' | 'warning' = 'success') {
+  notificationMessage.value = message
+  showTopToast(message, tone)
+}
+
+function clearNotificationFeedback() {
+  notificationMessage.value = ''
+  dismissTopToast()
+}
+
 function applyAccount(user: AuthUser) {
   account.value = user
   for (const platform of socialPlatforms) socialForm[platform.id] = socialIdFromValue(platform.id, user.socialLinks?.[platform.id])
@@ -124,7 +152,7 @@ async function saveSocialLinks() {
   try {
     const socialLinks = await updateSocialLinks(Object.fromEntries(socialPlatforms.map(({ id }) => [id, socialForm[id].trim() || null])))
     if (account.value) account.value.socialLinks = socialLinks
-    socialMessage.value = 'Ссылки на социальные сети сохранены.'
+    showTopToast('Ссылки на социальные сети сохранены.')
   } catch (error) {
     if (error instanceof ApiRequestError) {
       socialErrors.value = error.errors
@@ -185,19 +213,31 @@ function decodeVapidKey(value: string): Uint8Array {
   return Uint8Array.from(raw, (character) => character.charCodeAt(0))
 }
 
+function isIosDevice(): boolean {
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+}
+
+function isStandaloneApp(): boolean {
+  return window.matchMedia('(display-mode: standalone)').matches
+    || ('standalone' in navigator && navigator.standalone === true)
+}
+
 async function enableBrowserPush(): Promise<boolean> {
   const settings = notificationSettings.value
   if (!settings?.pushSupported || !('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-    notificationMessage.value = 'Этот браузер не поддерживает push-уведомления.'
+    setNotificationFeedback(isIosDevice() && !isStandaloneApp()
+      ? 'На iPhone и iPad push доступны в установленном веб-приложении. В Safari нажмите «Поделиться» → «На экран “Домой”», откройте MatchStrike с новой иконки и включите push там.'
+      : 'Этот браузер не поддерживает push-уведомления.', 'warning')
     return false
   }
   if (!settings.pushConfigured || !settings.pushPublicKey) {
-    notificationMessage.value = 'Push-уведомления не настроены на сервере. Уведомления сайта будут доступны в браузере.'
+    setNotificationFeedback('Push-уведомления не настроены на сервере. Уведомления сайта будут доступны в браузере.', 'warning')
     return false
   }
   const permission = await Notification.requestPermission()
   if (permission !== 'granted') {
-    notificationMessage.value = 'Разрешите уведомления для сайта в настройках браузера.'
+    setNotificationFeedback('Разрешите уведомления для сайта в настройках браузера.', 'warning')
     return false
   }
   const registration = await navigator.serviceWorker.register('/sw.js')
@@ -215,14 +255,14 @@ async function updateBrowserPush(value: boolean) {
   if (notificationBusy.value || !notificationSettings.value) return
   notificationBusy.value = true
   notificationError.value = ''
-  notificationMessage.value = ''
+  clearNotificationFeedback()
   try {
     if (value) {
       if (!notificationSettings.value.preferences.enabled) {
-        notificationMessage.value = 'Сначала включите уведомления аккаунта.'
+        setNotificationFeedback('Сначала включите уведомления аккаунта.', 'warning')
         return
       }
-      if (await enableBrowserPush()) notificationMessage.value = 'Push-уведомления включены в этом браузере.'
+      if (await enableBrowserPush()) setNotificationFeedback('Push-уведомления включены в этом браузере.')
     } else if ('serviceWorker' in navigator) {
       const registration = await navigator.serviceWorker.getRegistration('/sw.js')
       const subscription = await registration?.pushManager.getSubscription()
@@ -232,7 +272,7 @@ async function updateBrowserPush(value: boolean) {
       }
       pushEnabled.value = false
       if (notificationSettings.value.subscriptionCount > 0) notificationSettings.value.subscriptionCount -= 1
-      notificationMessage.value = 'Push-уведомления отключены в этом браузере.'
+      setNotificationFeedback('Push-уведомления отключены в этом браузере.')
     }
   } catch (error) {
     notificationError.value = error instanceof Error ? error.message : 'Не удалось изменить настройку push-уведомлений.'
@@ -247,7 +287,7 @@ async function updateNotificationSetting(key: 'enabled' | NotificationCategory, 
   if (!settings || notificationBusy.value) return
   notificationBusy.value = true
   notificationError.value = ''
-  notificationMessage.value = ''
+  clearNotificationFeedback()
   const previousPreferences = settings.preferences
   const next = { ...settings.preferences, [key]: value }
   try {
@@ -262,7 +302,7 @@ async function updateNotificationSetting(key: 'enabled' | NotificationCategory, 
         settings.subscriptionCount = 0
       }
     }
-    if (!notificationMessage.value) notificationMessage.value = value ? 'Настройки уведомлений сохранены.' : 'Уведомления отключены.'
+    if (!notificationMessage.value) setNotificationFeedback(value ? 'Настройки уведомлений сохранены.' : 'Уведомления отключены.')
   } catch (error) {
     settings.preferences = previousPreferences
     notificationError.value = error instanceof Error ? error.message : 'Не удалось сохранить настройки уведомлений.'
@@ -641,9 +681,19 @@ function formatActivity(value: string | null): string {
 }
 
 onMounted(loadAccount)
+onBeforeUnmount(() => {
+  if (topToastTimer !== undefined) window.clearTimeout(topToastTimer)
+})
 </script>
 
 <template>
+  <Transition name="profile-toast">
+    <div v-if="topToastMessage" class="profile-toast" :class="{ 'is-warning': topToastTone === 'warning' }" role="status" aria-live="polite" aria-atomic="true">
+      <span class="profile-toast-icon motion-safe:animate-pulse"><Bell v-if="topToastTone === 'warning'" :size="15" /><Check v-else :size="15" :stroke-width="2.5" /></span>
+      <span class="profile-toast-message">{{ topToastMessage }}</span>
+      <button class="profile-toast-close" type="button" aria-label="Закрыть уведомление" @click="dismissTopToast"><X :size="15" /></button>
+    </div>
+  </Transition>
   <section class="welcome-section route-intro" aria-labelledby="settings-page-title">
     <div class="welcome-copy">
       <div class="eyebrow"><span class="eyebrow-line"></span> АККАУНТ <span class="eyebrow-slash">/</span> SETTINGS</div>
@@ -739,7 +789,6 @@ onMounted(loadAccount)
           </button>
         </div>
         <p class="settings-description">{{ notificationSettings.pushConfigured ? 'Push работает в этом браузере после получения разрешения.' : 'Для push нужно установить Web Push зависимость и задать VAPID ключи на сервере.' }}</p>
-        <p v-if="notificationMessage" class="settings-message" role="status">{{ notificationMessage }}</p>
         <p v-if="notificationError" class="auth-message" role="alert">{{ notificationError }}</p>
         <div class="notification-setting-row notification-master-row">
           <div><strong>Уведомления аккаунта</strong><span>Показывать выбранные события в центре уведомлений сайта.</span></div>
