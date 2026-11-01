@@ -540,9 +540,11 @@ watch(nickname, loadProfile, { immediate: true })
             <RouterLink class="friend-request-nickname" :to="{ name: 'profile', params: { nickname: friend.nickname } }">{{ friend.nickname }}</RouterLink>
             <span class="friend-last-seen">Профиль MatchStrike</span>
           </div>
-          <RouterLink class="friend-action friend-profile-action" :to="{ name: 'profile', params: { nickname: friend.nickname } }">
-            <UserRound :size="15" /> Профиль
-          </RouterLink>
+          <div class="friend-actions profile-friend-actions">
+            <RouterLink class="friend-action friend-profile-action" :to="{ name: 'profile', params: { nickname: friend.nickname } }">
+              <UserRound :size="15" /> Профиль
+            </RouterLink>
+          </div>
         </article>
       </div>
       <div v-else class="empty-state section-empty friends-empty">
