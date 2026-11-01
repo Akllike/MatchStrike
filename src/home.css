@@ -805,6 +805,7 @@ h1 span { color: var(--yellow); }
   .admin-subnav-link { min-height: 36px; padding: 0 9px; font-size: 9px; }
   .friend-row { grid-template-columns: 42px minmax(0, 1fr); gap: 10px; padding: 11px; }
   .friend-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  .profile-friends-list .profile-friend-actions { grid-column: 2; justify-content: flex-start; }
   .friend-action { min-height: 31px; padding: 0 8px; }
   .friend-add-form { padding: 12px; }
   .friend-add-control { align-items: stretch; flex-direction: column; }
