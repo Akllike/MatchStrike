@@ -1,15 +1,16 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import AppShell from './AppShell.vue'
-import AdminPanelPage from './AdminPanelPage.vue'
-import BansPage from './BansPage.vue'
-import DashboardPage from './DashboardPage.vue'
-import FriendsPage from './FriendsPage.vue'
-import MatchesPage from './MatchesPage.vue'
-import ProfilePage from './ProfilePage.vue'
-import SettingsPage from './SettingsPage.vue'
-import StatsPage from './StatsPage.vue'
 import { getCurrentUser } from './api'
 import { adminLandingPath, canAccessAdmin } from './adminAccess'
+
+const DashboardPage = () => import('./DashboardPage.vue')
+const MatchesPage = () => import('./MatchesPage.vue')
+const StatsPage = () => import('./StatsPage.vue')
+const BansPage = () => import('./BansPage.vue')
+const ProfilePage = () => import('./ProfilePage.vue')
+const FriendsPage = () => import('./FriendsPage.vue')
+const SettingsPage = () => import('./SettingsPage.vue')
+const AdminPanelPage = () => import('./AdminPanelPage.vue')
 
 export const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
