@@ -877,6 +877,7 @@ onBeforeUnmount(() => {
               <div v-if="profileMenuOpen" class="profile-menu" role="menu">
                 <RouterLink :to="profileLink" role="menuitem" @click="profileMenuOpen = false"><UserRound :size="15" /> Профиль <ArrowUpRight :size="14" /></RouterLink>
                 <RouterLink to="/friends" role="menuitem" @click="profileMenuOpen = false"><Users :size="15" /> Друзья <ArrowUpRight :size="14" /></RouterLink>
+                <RouterLink to="/tickets" role="menuitem" @click="profileMenuOpen = false"><CircleHelp :size="15" /> Тикеты <ArrowUpRight :size="14" /></RouterLink>
                 <RouterLink to="/settings" role="menuitem" @click="profileMenuOpen = false"><Settings :size="15" /> Настройки <ArrowUpRight :size="14" /></RouterLink>
                 <button type="button" role="menuitem" @click="signOut">Выйти</button>
               </div>
@@ -889,7 +890,7 @@ onBeforeUnmount(() => {
       <div class="page-content">
         <RouterView v-slot="{ Component, route: pageRoute }">
           <Transition name="route" mode="out-in" appear>
-            <div :key="pageRoute.fullPath" class="route-page">
+            <div :key="pageRoute.name === 'tickets' ? pageRoute.path : pageRoute.fullPath" class="route-page">
               <component :is="Component" v-on="pageEventListeners" />
             </div>
           </Transition>

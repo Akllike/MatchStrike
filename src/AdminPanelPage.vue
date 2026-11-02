@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Activity, Ban, CircleHelp, Database, Gamepad2, Image, KeyRound, Link2, Pencil, Plus, RefreshCw, Search, Settings, ShieldCheck, Terminal, Trash2, Users, X } from '@lucide/vue'
 import PageLoader from './components/PageLoader.vue'
+import TicketWorkspace from './components/TicketWorkspace.vue'
 import {
   getAdminOverview,
   getAdminStatisticsSource,
@@ -117,7 +118,6 @@ const sectionIcons = {
   mutes: X,
 } satisfies Record<AdminSection, typeof Users>
 const sectionDescriptions: Partial<Record<AdminSection, string>> = {
-  tickets: 'Система обращений пока не подключена.',
   servers: 'Управление игровыми серверами пока не подключено.',
   bans: 'Реестр блокировок пока не подключён.',
   mutes: 'Реестр ограничений чата пока не подключён.',
@@ -703,6 +703,10 @@ watch(section, (next, previous) => {
       </article>
     </div>
     <div v-else class="admin-placeholder"><Gamepad2 :size="20" /><strong>Серверы ещё не добавлены</strong><span>Добавьте IP, порт и RCON-пароль, чтобы начать управление.</span></div>
+  </section>
+
+  <section v-else-if="section === 'tickets'" class="admin-content" aria-label="Тикеты">
+    <TicketWorkspace admin />
   </section>
 
   <section v-else-if="section !== 'overview'" class="admin-content" :aria-label="sectionLabels[section]">

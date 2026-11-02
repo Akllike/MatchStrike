@@ -9,6 +9,7 @@ const StatsPage = () => import('./StatsPage.vue')
 const BansPage = () => import('./BansPage.vue')
 const ProfilePage = () => import('./ProfilePage.vue')
 const FriendsPage = () => import('./FriendsPage.vue')
+const TicketsPage = () => import('./TicketsPage.vue')
 const SettingsPage = () => import('./SettingsPage.vue')
 const AdminPanelPage = () => import('./AdminPanelPage.vue')
 
@@ -25,6 +26,7 @@ export const router = createRouter({
         { path: 'bans', name: 'bans', component: BansPage },
         { path: 'profile/:nickname', name: 'profile', component: ProfilePage },
         { path: 'friends', name: 'friends', component: FriendsPage, meta: { requiresAuth: true } },
+        { path: 'tickets', name: 'tickets', component: TicketsPage, meta: { requiresAuth: true } },
         { path: 'settings', name: 'settings', component: SettingsPage, meta: { requiresAuth: true } },
         { path: 'adminpanel', name: 'adminpanel', component: AdminPanelPage, meta: { requiresAdmin: true } },
         { path: 'adminpanel/:section(users|tickets|servers|statistics|bans|mutes)', name: 'adminpanel-section', component: AdminPanelPage, meta: { requiresAdmin: true } },

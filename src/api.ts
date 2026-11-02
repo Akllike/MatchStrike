@@ -2,6 +2,32 @@ const apiBaseUrl = '/api/v1'
 
 export type AdminRole = 'moderator' | 'administrator' | 'high_administrator' | 'developer'
 export type StatisticsSource = 'own' | 'third_party'
+export type TicketCategory = 'general' | 'account_block' | 'server_ban' | 'technical' | 'other' | 'player_report'
+
+export interface TicketMessage {
+  id: number
+  authorName: string
+  avatarUrl: string | null
+  isAdmin: boolean
+  eventType: 'status_opened' | 'status_closed' | 'status_auto_closed' | null
+  body: string
+  createdAt: string
+}
+
+export interface Ticket {
+  id: number
+  subject: string
+  category: TicketCategory | null
+  status: 'open' | 'closed'
+  unread: boolean
+  nickname: string
+  lastMessage: TicketMessage | null
+}
+
+export interface TicketConversation {
+  ticket: Ticket
+  messages: TicketMessage[]
+}
 
 export interface ApiHealth {
   status: 'ok'
@@ -204,7 +230,7 @@ export interface AppNotification {
   createdAt: string | null
 }
 
-export type NotificationCategory = 'system' | 'friend_request' | 'friend_acceptance' | 'team_invitation'
+export type NotificationCategory = 'system' | 'friend_request' | 'friend_acceptance' | 'team_invitation' | 'ticket'
 export type NotificationPreferences = Record<'enabled' | NotificationCategory, boolean>
 export interface NotificationSettings {
   preferences: NotificationPreferences
@@ -310,6 +336,36 @@ async function postJson<T>(url: string, payload: unknown = {}): Promise<T> {
 
 async function postAuth<T>(endpoint: string, payload: unknown = {}): Promise<T> {
   return postJson<T>(`${apiBaseUrl}/auth/${endpoint}`, payload)
+}
+
+function ticketsUrl(admin: boolean): string {
+  return `${apiBaseUrl}/${admin ? 'admin' : 'me'}/tickets`
+}
+
+export async function getTickets(admin: boolean): Promise<Ticket[]> {
+  const response = await fetch(ticketsUrl(admin), { credentials: 'include', headers: { Accept: 'application/json' } })
+  return (await readJson<{ tickets: Ticket[] }>(response)).tickets
+}
+
+export async function getTicket(admin: boolean, id: number): Promise<TicketConversation> {
+  const response = await fetch(`${ticketsUrl(admin)}/${id}`, { credentials: 'include', headers: { Accept: 'application/json' } })
+  return readJson<TicketConversation>(response)
+}
+
+export async function markTicketRead(admin: boolean, id: number, lastMessageId: number): Promise<void> {
+  await postJson(`${ticketsUrl(admin)}/${id}/read`, { lastMessageId })
+}
+
+export function createTicket(subject: string, category: TicketCategory, body: string): Promise<TicketConversation> {
+  return postJson<TicketConversation>(ticketsUrl(false), { subject, category, body })
+}
+
+export function replyToTicket(admin: boolean, id: number, body: string): Promise<TicketConversation> {
+  return postJson<TicketConversation>(`${ticketsUrl(admin)}/${id}/messages`, { body })
+}
+
+export function setTicketStatus(id: number, status: Ticket['status']): Promise<TicketConversation> {
+  return mutateJson<TicketConversation>(`${ticketsUrl(true)}/${id}/status`, 'PATCH', { status })
 }
 
 export async function getApiHealth(): Promise<ApiHealth> {
@@ -659,8 +715,8 @@ export async function sendFriendRequest(nickname: string): Promise<FriendRequest
 export async function reportPlayer(
   nickname: string,
   payload: { reason: 'cheating' | 'abuse' | 'other'; details: string },
-): Promise<void> {
-  await postJson(`${apiBaseUrl}/users/${encodeURIComponent(nickname)}/reports`, payload)
+): Promise<{ status: 'received'; ticketId: number }> {
+  return postJson(`${apiBaseUrl}/users/${encodeURIComponent(nickname)}/reports`, payload)
 }
 
 export async function getPublicServers(): Promise<PublicGameServer[]> {
@@ -693,4 +749,3 @@ export async function updateAdminStatisticsSource(source: StatisticsSource): Pro
   const data = await mutateJson<{ source: StatisticsSource }>(`${apiBaseUrl}/admin/statistics/source`, 'PUT', { source })
   return data.source
 }
-

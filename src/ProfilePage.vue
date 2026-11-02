@@ -20,6 +20,7 @@ const loadError = ref('')
 const actionMessage = ref('')
 const successToast = ref('')
 const toastTone = ref<'success' | 'error'>('success')
+const toastTicketId = ref<number | null>(null)
 const mediaBusy = ref<'avatar' | 'cover' | null>(null)
 const mediaDialog = ref<'avatar' | 'cover' | null>(null)
 const mediaDragOver = ref(false)
@@ -31,6 +32,11 @@ const reportBusy = ref(false)
 const reportMessage = ref('')
 const mediaInput = ref<HTMLInputElement | null>(null)
 const reportForm = ref({ reason: 'cheating' as 'cheating' | 'abuse' | 'other', details: '' })
+const reportReasons = [
+  { value: 'cheating', label: 'Читы или нечестная игра' },
+  { value: 'abuse', label: 'Оскорбления или травля' },
+  { value: 'other', label: 'Другое нарушение' },
+] as const
 let successToastTimeout: number | undefined
 
 const mediaSpecs = {
@@ -58,16 +64,16 @@ function dismissSuccessToast() {
   if (successToastTimeout !== undefined) window.clearTimeout(successToastTimeout)
   successToastTimeout = undefined
   successToast.value = ''
+  toastTicketId.value = null
 }
 
-function showTopToast(message: string, tone: 'success' | 'error' = 'success') {
+function showTopToast(message: string, tone: 'success' | 'error' = 'success', ticketId: number | null = null) {
   if (successToastTimeout !== undefined) window.clearTimeout(successToastTimeout)
+  successToastTimeout = undefined
   toastTone.value = tone
+  toastTicketId.value = ticketId
   successToast.value = message
-  successToastTimeout = window.setTimeout(() => {
-    successToast.value = ''
-    successToastTimeout = undefined
-  }, 5000)
+  if (ticketId === null) successToastTimeout = window.setTimeout(dismissSuccessToast, 5000)
 }
 
 function showSuccessToast(message: string) {
@@ -133,6 +139,7 @@ async function loadProfile() {
   loading.value = true
   loadError.value = ''
   actionMessage.value = ''
+  dismissSuccessToast()
 
   try {
     profile.value = await getPlayerProfile(nickname.value)
@@ -277,6 +284,8 @@ function openReportDialog() {
     emit('authRequested')
     return
   }
+  reportMessage.value = ''
+  actionMessage.value = ''
   reportOpen.value = true
 }
 
@@ -285,9 +294,9 @@ async function submitReport() {
   reportBusy.value = true
   reportMessage.value = ''
   try {
-    await reportPlayer(profile.value.nickname, reportForm.value)
+    const result = await reportPlayer(profile.value.nickname, reportForm.value)
     reportOpen.value = false
-    actionMessage.value = 'Жалоба отправлена модераторам.'
+    showTopToast('Жалоба отправлена модераторам. Создано обращение.', 'success', result.ticketId)
     reportForm.value.details = ''
   } catch (error) {
     reportMessage.value = error instanceof ApiRequestError && error.status === 401
@@ -570,6 +579,7 @@ watch(nickname, loadProfile, { immediate: true })
         <div v-if="successToast" class="profile-toast" :class="{ 'is-error': toastTone === 'error' }" :role="toastTone === 'error' ? 'alert' : 'status'" :aria-live="toastTone === 'error' ? 'assertive' : 'polite'" aria-atomic="true">
           <span class="profile-toast-icon motion-safe:animate-pulse"><X v-if="toastTone === 'error'" :size="15" :stroke-width="2.5" /><Check v-else :size="15" :stroke-width="2.5" /></span>
           <span class="profile-toast-message">{{ successToast }}</span>
+          <RouterLink v-if="toastTicketId !== null" class="profile-toast-action dialog-primary" :to="{ name: 'tickets', query: { ticket: String(toastTicketId) } }" @click="dismissSuccessToast">Перейти</RouterLink>
           <button class="profile-toast-close" type="button" aria-label="Закрыть уведомление" @click="dismissSuccessToast"><X :size="15" /></button>
         </div>
       </Transition>
@@ -609,22 +619,25 @@ watch(nickname, loadProfile, { immediate: true })
 
       <Transition name="modal">
         <div v-if="reportOpen" class="modal-backdrop" @click.self="reportOpen = false">
-          <form class="info-dialog report-dialog" @submit.prevent="submitReport">
+          <form class="info-dialog report-dialog" role="dialog" aria-modal="true" aria-labelledby="report-dialog-title" @keydown.esc="reportOpen = false" @submit.prevent="submitReport">
           <button class="dialog-close" type="button" aria-label="Закрыть" @click="reportOpen = false"><X :size="18" /></button>
-          <span class="dialog-mark"><Flag :size="20" /></span>
-          <div class="section-kicker">COMMUNITY / MODERATION</div>
-          <h2>Пожаловаться на {{ profile.nickname }}</h2>
-          <label class="auth-field">
-            <span>Причина</span>
-            <select v-model="reportForm.reason" class="auth-input">
-              <option value="cheating">Читы или нечестная игра</option>
-              <option value="abuse">Оскорбления или травля</option>
-              <option value="other">Другое нарушение</option>
-            </select>
-          </label>
+          <div class="report-dialog-heading">
+            <span class="dialog-mark"><Flag :size="20" /></span>
+            <div><div class="section-kicker">COMMUNITY / MODERATION</div><h2 id="report-dialog-title">Пожаловаться на игрока</h2></div>
+          </div>
+          <p class="report-dialog-subtitle">Жалоба на <strong>{{ profile.nickname }}</strong></p>
+          <fieldset class="report-reasons">
+            <legend>Причина жалобы</legend>
+            <div class="report-reason-options">
+              <label v-for="reason in reportReasons" :key="reason.value" class="report-reason" :class="{ 'is-selected': reportForm.reason === reason.value }">
+                <input v-model="reportForm.reason" type="radio" name="report-reason" :value="reason.value" />
+                <span>{{ reason.label }}</span>
+              </label>
+            </div>
+          </fieldset>
           <label class="auth-field report-details-field">
-            <span>Комментарий <small>необязательно</small></span>
-            <textarea v-model.trim="reportForm.details" class="auth-input report-textarea" maxlength="1000" rows="4" placeholder="Опишите ситуацию"></textarea>
+            <span class="report-details-heading"><span>Комментарий <small>необязательно</small></span><span class="report-character-count">{{ reportForm.details.length }} / 1000</span></span>
+            <textarea v-model="reportForm.details" class="auth-input report-textarea" maxlength="1000" rows="4" placeholder="Расскажите подробнее о ситуации"></textarea>
           </label>
           <p v-if="reportMessage" class="auth-message" role="alert">{{ reportMessage }}</p>
           <div class="dialog-actions">

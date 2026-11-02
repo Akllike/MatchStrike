@@ -98,6 +98,7 @@ const notificationCategories: { id: NotificationCategory; title: string; descrip
   { id: 'friend_request', title: 'Заявки в друзья', description: 'Когда кто-то отправляет вам заявку в друзья.' },
   { id: 'friend_acceptance', title: 'Принятие заявок', description: 'Когда вашу заявку в друзья принимают.' },
   { id: 'team_invitation', title: 'Приглашения в команду', description: 'Когда вас приглашают в команду.' },
+  { id: 'ticket', title: 'Обращения (тикеты)', description: 'Когда администрация отвечает на ваше обращение.' },
 ]
 
 const emailChanged = computed(() => account.value !== null && accountForm.email.trim().toLowerCase() !== account.value.email)
@@ -792,11 +793,11 @@ onBeforeUnmount(() => {
         <p v-if="notificationError" class="auth-message" role="alert">{{ notificationError }}</p>
         <div class="notification-setting-row notification-master-row">
           <div><strong>Уведомления аккаунта</strong><span>Показывать выбранные события в центре уведомлений сайта.</span></div>
-          <label class="settings-switch"><input type="checkbox" :checked="notificationSettings.preferences.enabled" :disabled="notificationBusy" @change="updateNotificationSetting('enabled', ($event.target as HTMLInputElement).checked)" /><span aria-hidden="true"></span></label>
+          <label class="settings-switch"><input type="checkbox" aria-label="Уведомления аккаунта" :checked="notificationSettings.preferences.enabled" :disabled="notificationBusy" @change="updateNotificationSetting('enabled', ($event.target as HTMLInputElement).checked)" /><span aria-hidden="true"></span></label>
         </div>
         <div v-for="category in notificationCategories" :key="category.id" class="notification-setting-row">
           <div><strong>{{ category.title }}</strong><span>{{ category.description }}</span></div>
-          <label class="settings-switch"><input type="checkbox" :checked="notificationSettings.preferences[category.id]" :disabled="notificationBusy || !notificationSettings.preferences.enabled" @change="updateNotificationSetting(category.id, ($event.target as HTMLInputElement).checked)" /><span aria-hidden="true"></span></label>
+          <label class="settings-switch"><input type="checkbox" :aria-label="category.title" :checked="notificationSettings.preferences[category.id]" :disabled="notificationBusy || !notificationSettings.preferences.enabled" @change="updateNotificationSetting(category.id, ($event.target as HTMLInputElement).checked)" /><span aria-hidden="true"></span></label>
         </div>
       </div>
       <p v-else-if="notificationError" class="auth-message" role="alert">{{ notificationError }}</p>

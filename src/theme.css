@@ -374,6 +374,13 @@ input[type='checkbox'], input[type='radio'], input[type='range'] { accent-color:
 .profile-friend-button.profile-remove-friend-button { border-color: #dc2626; color: #fff; background: #b91c1c; box-shadow: 0 4px 10px rgba(185, 28, 28, .2); }
 .profile-friend-button.profile-remove-friend-button:hover:not(:disabled) { border-color: #ef4444; color: #fff; background: #dc2626; box-shadow: 0 4px 12px rgba(185, 28, 28, .28); }
 .profile-aside-card { border-color: transparent; box-shadow: var(--shadow-soft); }
+.dark .tickets-workspace { background: linear-gradient(100deg, #243549, #1c2838 75%); }
+.dark .ticket-list-item { background: rgba(17, 26, 40, .32); }
+.dark .ticket-list-item:hover, .dark .ticket-list-item.is-selected { background: var(--surface-tint); }
+.dark .ticket-list-status:not(.is-closed) { color: #85c9a1; }
+.tickets-list-heading, .ticket-list-top strong, .ticket-dialog-empty { font-size: 12px; }
+.tickets-list-heading span, .tickets-empty-list, .ticket-list-meta, .ticket-list-preview, .ticket-status, .ticket-message-meta, .ticket-message-meta strong, .ticket-closed-note, .tickets-error { font-size: 11px; }
+.ticket-dialog-header h3, .ticket-message p { font-size: 13px; }
 .friend-action.friend-remove-action { border-color: #fecaca; color: #b91c1c; background: #fff7f7; }
 .friend-action.friend-remove-action:hover:not(:disabled) { border-color: #fca5a5; color: #991b1b; background: #fef2f2; }
 .dark .friend-action.friend-remove-action { border-color: #7f302b; color: #fecaca; background: #3b211f; }
