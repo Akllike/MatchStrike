@@ -1,28 +1,24 @@
-const CACHE_NAME = 'matchstrike-shell-v1'
-const APP_SHELL = ['/']
+import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching'
+import { NavigationRoute, registerRoute } from 'workbox-routing'
+import { clientsClaim } from 'workbox-core'
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)))
-  self.skipWaiting()
+precacheAndRoute(self.__WB_MANIFEST)
+cleanupOutdatedCaches()
+clientsClaim()
+
+// Keep app navigation available offline while leaving API requests network-only.
+registerRoute(new NavigationRoute(
+  createHandlerBoundToURL('/index.html'),
+  { denylist: [/^\/api(?:\/|$)/] },
+))
+
+// Update only after the user confirms in the in-app update alert.
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting()
 })
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(Promise.all([
-    self.clients.claim(),
-    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))),
-  ]))
-})
-
-self.addEventListener('fetch', (event) => {
-  const request = event.request
-  if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return
-  if (request.mode === 'navigate') {
-    event.respondWith(fetch(request).then((response) => {
-      const copy = response.clone()
-      void caches.open(CACHE_NAME).then((cache) => cache.put('/', copy))
-      return response
-    }).catch(() => caches.match('/')))
-  }
+  event.waitUntil(caches.delete('matchstrike-shell-v1'))
 })
 
 self.addEventListener('push', (event) => {

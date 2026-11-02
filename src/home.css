@@ -103,6 +103,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--yellow); outlin
 .notifications-button { position: relative; display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid transparent; border-radius: 4px; color: var(--muted); background: transparent; cursor: pointer; transition: color 150ms ease, border-color 150ms ease, background 150ms ease; }
 .notifications-button:hover, .notifications-button[aria-expanded='true'] { border-color: var(--line); color: var(--text); background: var(--panel); }
 .push-onboarding-alert { position: fixed; z-index: 60; top: 16px; left: 50%; display: flex; width: min(560px, calc(100vw - 28px)); align-items: center; gap: 11px; padding: 12px 13px; border: 1px solid var(--line); border-radius: 7px; color: var(--text); background: var(--panel); box-shadow: 0 14px 42px rgba(0,0,0,.38); transform: translateX(-50%); }
+.pwa-update-alert { border-color: rgba(103, 210, 237, .32); background: linear-gradient(115deg, rgba(34, 101, 126, .22), transparent 62%), var(--panel); }
 .push-onboarding-icon { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border-radius: 50%; color: #09151a; background: #67d2ed; }
 .push-onboarding-copy { display: grid; min-width: 0; flex: 1; gap: 3px; }
 .push-onboarding-copy strong { color: var(--text); font-size: 11px; font-weight: 700; }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useRegisterSW } from 'virtual:pwa-register/vue'
 import {
   ArrowLeft,
   Activity,
@@ -15,6 +16,7 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
+  RefreshCw,
   Settings,
   Shield,
   ShieldCheck,
@@ -40,6 +42,8 @@ interface Account {
 
 const route = useRoute()
 const router = useRouter()
+const { needRefresh, updateServiceWorker } = useRegisterSW({ immediate: true })
+const pwaUpdateBusy = ref(false)
 const darkTheme = ref(document.documentElement.classList.contains('dark'))
 const authMode = ref<AuthMode>(null)
 const currentUser = ref<Account | null>(null)
@@ -84,6 +88,21 @@ const authForm = reactive({
 })
 const activityEvents = ['pointerdown', 'keydown', 'scroll', 'touchstart'] as const
 let lastSessionRefreshAt = 0
+
+async function applyPwaUpdate() {
+  if (pwaUpdateBusy.value) return
+  pwaUpdateBusy.value = true
+  try {
+    await updateServiceWorker()
+  } catch (error) {
+    console.error('Не удалось обновить MatchStrike.', error)
+    pwaUpdateBusy.value = false
+  }
+}
+
+function dismissPwaUpdate() {
+  needRefresh.value = false
+}
 
 function toggleTheme() {
   darkTheme.value = !darkTheme.value
@@ -712,7 +731,15 @@ onBeforeUnmount(() => {
 <template>
   <div id="top" class="site-shell" :class="{ 'is-sidebar-collapsed': sidebarCollapsed, 'is-mobile-menu-open': mobileMenuOpen }">
     <Transition name="push-onboarding">
-      <aside v-if="pushPromptVisible" class="push-onboarding-alert" role="status" aria-live="polite">
+      <aside v-if="needRefresh" class="push-onboarding-alert pwa-update-alert" role="status" aria-live="polite">
+        <span class="push-onboarding-icon"><RefreshCw :size="17" /></span>
+        <span class="push-onboarding-copy"><strong>Доступно обновление</strong><span>Новая версия MatchStrike готова. Обновить страницу сейчас?</span></span>
+        <span class="push-onboarding-actions">
+          <button type="button" class="push-onboarding-enable" :disabled="pwaUpdateBusy" @click="applyPwaUpdate">{{ pwaUpdateBusy ? 'Обновляем…' : 'Обновить' }}</button>
+          <button type="button" class="push-onboarding-later" :disabled="pwaUpdateBusy" @click="dismissPwaUpdate">Позже</button>
+        </span>
+      </aside>
+      <aside v-else-if="pushPromptVisible" class="push-onboarding-alert" role="status" aria-live="polite">
         <span class="push-onboarding-icon"><Bell :size="17" /></span>
         <span class="push-onboarding-copy"><strong>Не пропускайте уведомления</strong><span>Включите push, чтобы получать важные события, даже когда сайт закрыт.</span></span>
         <span class="push-onboarding-actions">
@@ -722,7 +749,7 @@ onBeforeUnmount(() => {
       </aside>
     </Transition>
     <Transition name="push-onboarding">
-      <div v-if="pushFollowupMessage" class="push-onboarding-alert push-onboarding-followup" role="status" aria-live="polite">
+      <div v-if="pushFollowupMessage && !needRefresh && !pushPromptVisible" class="push-onboarding-alert push-onboarding-followup" role="status" aria-live="polite">
         <span class="push-onboarding-icon"><Bell :size="17" /></span>
         <span class="push-onboarding-copy"><strong>Уведомления</strong><span>{{ pushFollowupMessage }}</span></span>
         <button class="push-onboarding-close" type="button" aria-label="Закрыть сообщение" @click="closePushFollowup"><X :size="16" /></button>
