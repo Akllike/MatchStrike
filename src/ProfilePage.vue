@@ -19,6 +19,7 @@ const loading = ref(true)
 const loadError = ref('')
 const actionMessage = ref('')
 const successToast = ref('')
+const toastTone = ref<'success' | 'error'>('success')
 const mediaBusy = ref<'avatar' | 'cover' | null>(null)
 const mediaDialog = ref<'avatar' | 'cover' | null>(null)
 const mediaDragOver = ref(false)
@@ -59,13 +60,23 @@ function dismissSuccessToast() {
   successToast.value = ''
 }
 
-function showSuccessToast(message: string) {
+function showTopToast(message: string, tone: 'success' | 'error' = 'success') {
   if (successToastTimeout !== undefined) window.clearTimeout(successToastTimeout)
+  toastTone.value = tone
   successToast.value = message
   successToastTimeout = window.setTimeout(() => {
     successToast.value = ''
     successToastTimeout = undefined
   }, 5000)
+}
+
+function showSuccessToast(message: string) {
+  showTopToast(message)
+}
+
+function showMediaError(message: string) {
+  mediaError.value = message
+  showTopToast(message, 'error')
 }
 
 onBeforeUnmount(dismissSuccessToast)
@@ -167,11 +178,11 @@ function imageDimensions(file: File): Promise<{ width: number; height: number }>
 async function uploadMedia(file: File, field: 'avatar' | 'cover') {
   const spec = mediaSpecs[field]
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-    mediaError.value = 'Выберите изображение в формате JPG, PNG или WebP.'
+    showMediaError('Выберите изображение в формате JPG, PNG или WebP.')
     return
   }
   if (file.size > spec.maxBytes) {
-    mediaError.value = `Размер файла не должен превышать ${spec.maxSize}.`
+    showMediaError(`Размер файла не должен превышать ${spec.maxSize}.`)
     return
   }
 
@@ -179,11 +190,11 @@ async function uploadMedia(file: File, field: 'avatar' | 'cover') {
   try {
     dimensions = await imageDimensions(file)
   } catch {
-    mediaError.value = 'Не удалось прочитать изображение.'
+    showMediaError('Не удалось прочитать изображение.')
     return
   }
   if (dimensions.width > spec.maxWidth || dimensions.height > spec.maxHeight) {
-    mediaError.value = `Максимальное разрешение: ${spec.maxWidth} × ${spec.maxHeight} px.`
+    showMediaError(`Максимальное разрешение: ${spec.maxWidth} × ${spec.maxHeight} px.`)
     return
   }
 
@@ -198,9 +209,9 @@ async function uploadMedia(file: File, field: 'avatar' | 'cover') {
     mediaDialog.value = null
     mediaDragOver.value = false
   } catch (error) {
-    mediaError.value = error instanceof ApiRequestError
+    showMediaError(error instanceof ApiRequestError
       ? Object.values(error.errors).flat()[0] ?? error.message
-      : 'Не удалось загрузить изображение.'
+      : 'Не удалось загрузить изображение.')
   } finally {
     mediaBusy.value = null
   }
@@ -556,8 +567,8 @@ watch(nickname, loadProfile, { immediate: true })
 
     <Teleport to="body">
       <Transition name="profile-toast">
-        <div v-if="successToast" class="profile-toast" role="status" aria-live="polite" aria-atomic="true">
-          <span class="profile-toast-icon motion-safe:animate-pulse"><Check :size="15" :stroke-width="2.5" /></span>
+        <div v-if="successToast" class="profile-toast" :class="{ 'is-error': toastTone === 'error' }" :role="toastTone === 'error' ? 'alert' : 'status'" :aria-live="toastTone === 'error' ? 'assertive' : 'polite'" aria-atomic="true">
+          <span class="profile-toast-icon motion-safe:animate-pulse"><X v-if="toastTone === 'error'" :size="15" :stroke-width="2.5" /><Check v-else :size="15" :stroke-width="2.5" /></span>
           <span class="profile-toast-message">{{ successToast }}</span>
           <button class="profile-toast-close" type="button" aria-label="Закрыть уведомление" @click="dismissSuccessToast"><X :size="15" /></button>
         </div>
@@ -589,7 +600,6 @@ watch(nickname, loadProfile, { immediate: true })
             <div><span>Рекомендуемое</span><strong>{{ activeMediaSpec.recommended }} px</strong></div>
             <div><span>Максимальное</span><strong>{{ activeMediaSpec.maxWidth }} × {{ activeMediaSpec.maxHeight }} px</strong></div>
           </div>
-          <p v-if="mediaError" class="auth-message" role="alert">{{ mediaError }}</p>
           <div class="dialog-actions">
             <button class="dialog-secondary" type="button" :disabled="mediaBusy !== null" @click="closeMediaDialog">Отмена</button>
           </div>
