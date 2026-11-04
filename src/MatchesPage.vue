@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { Gamepad2, ChevronLeft, ChevronRight, Swords, Users } from '@lucide/vue'
 import { getGameMatches } from './api'
 import type { GameMatch } from './api'
+import PageLoader from './components/PageLoader.vue'
 
 const mode = ref<'War' | 'Mix'>('War')
 const connected = ref(false)
@@ -35,6 +36,7 @@ async function load(initial = false, quiet = false) {
   const id = ++requestId
   pending = true
   if (!quiet) loading.value = true
+  const minimumLoading = quiet ? Promise.resolve() : new Promise<void>(resolve => setTimeout(resolve, 350))
   try {
     const data = await getGameMatches(initial ? null : mode.value, page.value)
     if (id !== requestId) return
@@ -53,6 +55,7 @@ async function load(initial = false, quiet = false) {
   } catch (requestError) {
     if (id === requestId) error.value = requestError instanceof Error ? requestError.message : 'Не удалось загрузить матчи.'
   } finally {
+    await minimumLoading
     if (id === requestId) {
       pending = false
       loading.value = false
@@ -104,7 +107,7 @@ onUnmounted(() => { if (timer) clearInterval(timer); requestId++ })
       </button>
     </div>
     <Transition name="profile-content" mode="out-in">
-      <div v-if="loading" key="loading" class="donut-loading-space" aria-busy="true"><span class="visually-hidden" role="status">Загружаем матчи…</span></div>
+      <PageLoader v-if="loading" key="loading" :message="`Загружаем ${mode} матчи…`" />
       <div v-else-if="error" key="error" class="admin-error" role="alert"><strong>Не удалось загрузить матчи</strong><span>{{ error }}</span><button class="friend-action" type="button" @click="load()">Повторить</button></div>
       <div v-else-if="matches.length" :key="`${mode}-${page}`" class="donut-match-groups">
         <section v-for="group in matchGroups" :key="group.key" class="donut-match-group" :aria-label="group.title">
