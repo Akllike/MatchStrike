@@ -175,6 +175,30 @@ export interface GameMatchesPage {
   pagination: { currentPage: number; lastPage: number; total: number }
 }
 
+export interface MatchPlayer {
+  name: string
+  kills: number | null
+  deaths: number | null
+}
+
+export interface GameMatchDetails extends GameMatch {
+  round: number | null
+  endReason: string | null
+  playersRetained: boolean
+  playersCt: MatchPlayer[]
+  playersT: MatchPlayer[]
+  seriesMaps: string[]
+  seriesMapIndex: number | null
+  seriesResults: {
+    mapIndex: number
+    map: string
+    teamAScore: number
+    teamBScore: number
+    winner: 'team_a' | 'team_b' | 'draw'
+  }[]
+  realtime: { key: string; host: string; port: number; secure: boolean; path: string } | null
+}
+
 export interface PlayerMatch {
   id: string
   map: string
@@ -487,8 +511,8 @@ export async function getGameMatches(mode: 'War' | 'Mix' | null, page = 1): Prom
   return readJson<GameMatchesPage>(await fetch(`${apiBaseUrl}/matches?${params}`, { headers: { Accept: 'application/json' } }))
 }
 
-export async function getGameMatch(id: string): Promise<GameMatch> {
-  const data = await readJson<{ match: GameMatch }>(await fetch(`${apiBaseUrl}/matches/${encodeURIComponent(id)}`, { headers: { Accept: 'application/json' } }))
+export async function getGameMatch(id: string): Promise<GameMatchDetails> {
+  const data = await readJson<{ match: GameMatchDetails }>(await fetch(`${apiBaseUrl}/matches/${encodeURIComponent(id)}`, { cache: 'no-store', headers: { Accept: 'application/json' } }))
   return data.match
 }
 
