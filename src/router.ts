@@ -5,6 +5,7 @@ import { adminLandingPath, canAccessAdmin } from './adminAccess'
 
 const DashboardPage = () => import('./DashboardPage.vue')
 const MatchesPage = () => import('./MatchesPage.vue')
+const MatchDetailPage = () => import('./MatchDetailPage.vue')
 const StatsPage = () => import('./StatsPage.vue')
 const BansPage = () => import('./BansPage.vue')
 const ProfilePage = () => import('./ProfilePage.vue')
@@ -22,6 +23,7 @@ export const router = createRouter({
       children: [
         { path: '', name: 'home', component: DashboardPage },
         { path: 'matches', name: 'matches', component: MatchesPage },
+        { path: 'matches/:id(\\d+)', name: 'match-detail', component: MatchDetailPage },
         { path: 'stats', name: 'stats', component: StatsPage },
         { path: 'bans', name: 'bans', component: BansPage },
         { path: 'profile/:nickname', name: 'profile', component: ProfilePage },

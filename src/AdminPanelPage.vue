@@ -6,6 +6,8 @@ import PageLoader from './components/PageLoader.vue'
 import TicketWorkspace from './components/TicketWorkspace.vue'
 import {
   getAdminOverview,
+  connectDonutMatch,
+  disconnectDonutMatch,
   getAdminStatisticsSource,
   getAdminServers,
   getAdminServerIntegrationData,
@@ -56,11 +58,13 @@ const confirmation = ref<'block' | 'unblock' | 'avatar' | 'cover' | 'delete' | n
 const servers = ref<AdminGameServer[]>([])
 const serversLoading = ref(false)
 const serversError = ref('')
-const serverDialog = ref<'server' | 'integration' | 'rcon' | null>(null)
+const serverDialog = ref<'server' | 'integration' | 'rcon' | 'donutmatch' | null>(null)
 const serverAction = ref(false)
 const serverDialogError = ref('')
 const serverDialogStatus = ref('')
 const activeServer = ref<AdminGameServer | null>(null)
+const donutToken = ref('')
+const siteOrigin = window.location.origin
 const serverForm = ref({ name: '', ip: '', port: '27015', rconPassword: '' })
 const integrationType = ref<AdminServerIntegration>('sourcebans')
 const integrationForm = ref({
@@ -289,6 +293,39 @@ function closeServerDialog(force = false) {
   serverDialogStatus.value = ''
   integrationRecords.value = []
   rconOutput.value = ''
+  donutToken.value = ''
+}
+
+function openDonutMatch(server: AdminGameServer) {
+  activeServer.value = server
+  serverDialogError.value = ''
+  donutToken.value = ''
+  serverDialog.value = 'donutmatch'
+}
+
+async function configureDonutMatch(disconnect = false) {
+  const server = activeServer.value
+  if (!server || serverAction.value) return
+  if (server.donutmatchConnected && !window.confirm(disconnect
+    ? 'Отключить DonutMatch? История матчей сохранится.'
+    : 'Создать новый ключ? Старый ключ перестанет работать.')) return
+  serverAction.value = true
+  serverDialogError.value = ''
+  try {
+    if (disconnect) {
+      await disconnectDonutMatch(server.id)
+      donutToken.value = ''
+    } else {
+      donutToken.value = await connectDonutMatch(server.id)
+    }
+    const updated = { ...server, donutmatchConnected: !disconnect, donutmatchLastSeenAt: null }
+    activeServer.value = updated
+    replaceServer(updated)
+  } catch (requestError) {
+    serverDialogError.value = requestError instanceof Error ? requestError.message : 'Не удалось изменить подключение DonutMatch.'
+  } finally {
+    serverAction.value = false
+  }
 }
 
 function openServerEditor(server: AdminGameServer | null = null) {
@@ -692,11 +729,13 @@ watch(section, (next, previous) => {
           <div><span>Игроки</span><strong>{{ server.query.players === null ? '—' : `${server.query.players} / ${server.query.maxPlayers ?? '—'}` }}</strong></div>
           <div><span>SourceBans</span><strong :class="{ 'is-connected': server.sourcebansConnected }">{{ server.sourcebansConnected ? 'Подключён' : 'Не подключён' }}</strong></div>
           <div><span>Levels Ranks</span><strong :class="{ 'is-connected': server.levelsConnected }">{{ server.levelsConnected ? 'Подключён' : 'Не подключён' }}</strong></div>
+          <div><span>DonutMatch</span><strong :class="{ 'is-connected': server.donutmatchConnected }">{{ server.donutmatchConnected ? (server.donutmatchLastSeenAt ? 'Данные получены' : 'Ожидает данные') : 'Не подключён' }}</strong></div>
         </div>
         <div class="admin-server-actions">
           <button class="friend-action" type="button" @click="openServerEditor(server)"><Pencil :size="13" /> Изменить</button>
           <button class="friend-action" type="button" @click="openIntegration(server, 'sourcebans')"><Link2 :size="13" /> {{ server.sourcebansConnected ? 'SourceBans' : 'Подключить SourceBans' }}</button>
           <button class="friend-action" type="button" @click="openIntegration(server, 'levels')"><Database :size="13" /> {{ server.levelsConnected ? 'LVL' : 'Подключить LVL' }}</button>
+          <button class="friend-action" type="button" @click="openDonutMatch(server)"><Link2 :size="13" /> {{ server.donutmatchConnected ? 'DonutMatch' : 'Подключить DonutMatch' }}</button>
           <button class="friend-action" type="button" @click="openRcon(server)"><Terminal :size="13" /> Выполнить RCON</button>
           <button class="admin-danger-button is-delete" type="button" :disabled="deletingServerId === server.id || refreshingServerId !== null" @click="removeServer(server)"><Trash2 :size="13" /> {{ deletingServerId === server.id ? 'Удаляем…' : 'Удалить' }}</button>
         </div>
@@ -866,6 +905,26 @@ watch(section, (next, previous) => {
             <p v-else class="admin-integration-empty">Записей пока нет.</p>
           </section>
         </form>
+
+        <div v-else-if="serverDialog === 'donutmatch'" class="info-dialog admin-server-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-donut-title">
+          <button class="dialog-close" type="button" aria-label="Закрыть" :disabled="serverAction" @click="closeServerDialog()"><X :size="18" /></button>
+          <span class="dialog-mark"><Link2 :size="19" /></span>
+          <div class="section-kicker">MATCHSTRIKE / DONUTMATCH</div>
+          <h2 id="admin-donut-title">DonutMatch</h2>
+          <p class="admin-server-dialog-subtitle">Настройте web-модуль на игровом сервере. Матчи сохраняются после подключения.</p>
+          <div v-if="activeServer" class="admin-server-form-fields">
+            <label class="auth-field"><span>sm_donutmatch_web_url</span><input class="auth-input" readonly :value="`${siteOrigin}/api/v1/donutmatch/servers/${activeServer.id}/events`" @focus="($event.target as HTMLInputElement).select()" /></label>
+            <label class="auth-field"><span>sm_donutmatch_web_server_id</span><input class="auth-input" readonly :value="`matchstrike-${activeServer.id}`" @focus="($event.target as HTMLInputElement).select()" /></label>
+            <label v-if="donutToken" class="auth-field"><span>sm_donutmatch_web_token — сохраните сейчас, повторно не показывается</span><input class="auth-input" readonly :value="donutToken" @focus="($event.target as HTMLInputElement).select()" /></label>
+            <p v-else class="admin-server-dialog-subtitle">{{ activeServer.donutmatchConnected ? 'Ключ уже создан. При смене потребуется обновить конфигурацию плагина.' : 'Создайте ключ и добавьте его в конфигурацию плагина.' }}</p>
+            <p v-if="activeServer.donutmatchLastSeenAt" class="admin-server-dialog-subtitle">Последние данные: {{ formatDate(activeServer.donutmatchLastSeenAt) }}</p>
+          </div>
+          <p v-if="serverDialogError" class="auth-message" role="alert">{{ serverDialogError }}</p>
+          <div class="admin-server-dialog-actions">
+            <button v-if="activeServer?.donutmatchConnected" class="dialog-secondary" type="button" :disabled="serverAction" @click="configureDonutMatch(true)">Отключить</button>
+            <button class="dialog-primary" type="button" :disabled="serverAction" @click="configureDonutMatch()">{{ serverAction ? 'Сохраняем…' : activeServer?.donutmatchConnected ? 'Сменить ключ' : 'Создать ключ' }}</button>
+          </div>
+        </div>
 
         <form v-else class="info-dialog admin-server-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-rcon-dialog-title" @submit.prevent="runRcon">
           <button class="dialog-close" type="button" aria-label="Закрыть" :disabled="serverAction" @click="closeServerDialog()"><X :size="18" /></button>

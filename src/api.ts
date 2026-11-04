@@ -116,6 +116,8 @@ export interface AdminGameServer {
   queryCheckedAt: string | null
   sourcebansConnected: boolean
   levelsConnected: boolean
+  donutmatchConnected: boolean
+  donutmatchLastSeenAt: string | null
   sourcebansSettings: AdminServerIntegrationSettings | null
   levelsSettings: AdminServerIntegrationSettings | null
 }
@@ -150,6 +152,28 @@ export interface AdminServerIntegrationSettings {
 }
 
 export type AdminIntegrationRecord = Record<string, string | number | null>
+
+export interface GameMatch {
+  id: number
+  serverNumber: number
+  serverName: string | null
+  mode: 'War' | 'Mix'
+  format: 'Classic' | 'BO1' | 'BO3' | 'BO5' | null
+  status: 'live' | 'finished' | 'preparing' | 'cancelled'
+  map: string
+  teamA: { name?: string | null; score: number | null }
+  teamB: { name?: string | null; score: number | null }
+  scoreType: 'maps' | 'rounds'
+  roundTeams: [{ name?: string | null; score: number }, { name?: string | null; score: number }]
+  updatedAt: string
+}
+
+export interface GameMatchesPage {
+  connected: boolean
+  hasMatches: boolean
+  matches: GameMatch[]
+  pagination: { currentPage: number; lastPage: number; total: number }
+}
 
 export interface PlayerMatch {
   id: string
@@ -446,6 +470,26 @@ export async function saveAdminServer(
 
 export async function deleteAdminServer(serverId: number): Promise<void> {
   await mutateJson<{ status: string }>(`${apiBaseUrl}/admin/servers/${serverId}`, 'DELETE')
+}
+
+export async function connectDonutMatch(serverId: number): Promise<string> {
+  const data = await mutateJson<{ token: string }>(`${apiBaseUrl}/admin/servers/${serverId}/donutmatch`, 'POST')
+  return data.token
+}
+
+export async function disconnectDonutMatch(serverId: number): Promise<void> {
+  await mutateJson<{ status: string }>(`${apiBaseUrl}/admin/servers/${serverId}/donutmatch`, 'DELETE')
+}
+
+export async function getGameMatches(mode: 'War' | 'Mix' | null, page = 1): Promise<GameMatchesPage> {
+  const params = new URLSearchParams({ page: String(page) })
+  if (mode) params.set('mode', mode)
+  return readJson<GameMatchesPage>(await fetch(`${apiBaseUrl}/matches?${params}`, { headers: { Accept: 'application/json' } }))
+}
+
+export async function getGameMatch(id: string): Promise<GameMatch> {
+  const data = await readJson<{ match: GameMatch }>(await fetch(`${apiBaseUrl}/matches/${encodeURIComponent(id)}`, { headers: { Accept: 'application/json' } }))
+  return data.match
 }
 
 export async function saveAdminServerIntegration(
