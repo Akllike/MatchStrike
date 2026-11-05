@@ -179,6 +179,12 @@ export interface MatchPlayer {
   name: string
   kills: number | null
   deaths: number | null
+  account: {
+    id: number
+    nickname: string
+    avatarUrl: string | null
+    profileUrl: string
+  } | null
 }
 
 export interface GameMatchDetails extends GameMatch {

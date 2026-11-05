@@ -539,3 +539,13 @@ input[type='checkbox'], input[type='radio'], input[type='range'] { accent-color:
 .friend-action.friend-remove-action:hover:not(:disabled) { border-color: #fca5a5; color: #991b1b; background: #fef2f2; }
 .dark .friend-action.friend-remove-action { border-color: #7f302b; color: #fecaca; background: #3b211f; }
 .dark .friend-action.friend-remove-action:hover:not(:disabled) { border-color: #b64d43; color: #fff; background: #542724; }
+/* Match player account */
+.match-player-avatar { object-fit: cover; overflow: hidden; }
+.match-player-identity { display: flex; min-width: 0; align-items: center; gap: 10px; }
+.match-player-label { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: 3px; }
+.match-player-label strong,
+.match-player-label a { color: var(--text); font-size: 12px; font-weight: 700; text-decoration: none; overflow-wrap: anywhere; }
+.match-player-label a:hover { color: var(--yellow); }
+.match-player-label small { color: var(--muted); font-size: 10px; font-weight: 500; }
+.match-player-label .match-player-self { color: var(--yellow); font-weight: 700; }
+.match-results-player .match-player-label { display: flex; }
