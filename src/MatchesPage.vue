@@ -4,8 +4,9 @@ import { Gamepad2, ChevronLeft, ChevronRight, Swords, Users } from '@lucide/vue'
 import { getGameMatches } from './api'
 import type { GameMatch } from './api'
 import PageLoader from './components/PageLoader.vue'
+import { handleMapImageError, matchMapImage } from './matchArtwork'
 
-const mode = ref<'War' | 'Mix'>('War')
+const mode = ref<'War' | 'Mix'>('Mix')
 const connected = ref(false)
 const hasArchive = ref(false)
 const matches = ref<GameMatch[]>([])
@@ -101,8 +102,8 @@ onUnmounted(() => { if (timer) clearInterval(timer); requestId++ })
       <div><div class="section-kicker">АРХИВ ИГР</div><h2 id="matches-list-title">Матчи</h2></div>
       <span class="section-count">{{ total.toLocaleString('ru-RU') }} <span>МАТЧЕЙ</span></span>
     </div>
-    <div v-if="connected || hasArchive" class="donut-tabs" :class="{ 'is-mix': mode === 'Mix' }" role="group" aria-label="Тип матчей">
-      <button v-for="item in (['War', 'Mix'] as const)" :key="item" type="button" :aria-pressed="mode === item" @click="selectMode(item)">
+    <div v-if="connected || hasArchive" class="donut-tabs" :class="{ 'is-war': mode === 'War' }" role="group" aria-label="Тип матчей">
+      <button v-for="item in (['Mix', 'War'] as const)" :key="item" type="button" :aria-pressed="mode === item" @click="selectMode(item)">
         <Swords v-if="item === 'War'" :size="16" /><Users v-else :size="16" /><span>{{ item }} матчи</span>
       </button>
     </div>
@@ -114,10 +115,11 @@ onUnmounted(() => { if (timer) clearInterval(timer); requestId++ })
           <div class="donut-group-heading"><span v-if="group.key === 'live'" class="donut-group-live-dot" aria-hidden="true"></span><h3>{{ group.title }}</h3><span class="donut-group-line" aria-hidden="true"></span></div>
           <div class="donut-match-grid">
             <RouterLink v-for="match in group.matches" :key="match.id" class="donut-match-card" :to="{ name: 'match-detail', params: { id: match.id } }">
+              <img v-if="matchMapImage(match.map)" :key="match.map" class="donut-card-map" :src="matchMapImage(match.map) ?? undefined" alt="" aria-hidden="true" @error="handleMapImageError" />
               <div class="donut-match-meta"><span>МАТЧ #{{ match.id }}</span><span class="donut-status" :class="`is-${match.status}`">{{ statusLabel(match.status) }}</span></div>
               <div class="donut-match-teams"><strong>{{ match.teamA.name || 'Команда CT' }}</strong><b>{{ match.teamA.score ?? '—' }} : {{ match.teamB.score ?? '—' }}</b><strong>{{ match.teamB.name || 'Команда T' }}</strong></div>
               <div class="donut-score-label">Счёт {{ match.scoreType === 'maps' ? 'по картам' : 'по раундам' }}</div>
-              <div class="donut-match-footer"><span>{{ match.mode }} · {{ match.format || 'Формат не указан' }}</span><span>Сервер #{{ match.serverNumber }}</span><span>{{ match.map }}</span><span>Обновлено: {{ new Date(match.updatedAt).toLocaleString('ru-RU') }}</span></div>
+              <div class="donut-match-footer"><span>{{ match.mode }} · {{ match.format || 'Формат не указан' }}</span><span>Сервер #{{ match.serverNumber }}{{ match.serverName ? ` · ${match.serverName}` : '' }}</span><span>{{ match.map }}</span><span>Обновлено: {{ new Date(match.updatedAt).toLocaleString('ru-RU') }}</span></div>
             </RouterLink>
           </div>
         </section>

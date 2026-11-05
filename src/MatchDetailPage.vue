@@ -6,6 +6,7 @@ import Pusher from 'pusher-js'
 import { getGameMatch } from './api'
 import type { GameMatchDetails, MatchPlayer } from './api'
 import PageLoader from './components/PageLoader.vue'
+import { matchMapImage } from './matchArtwork'
 
 const route = useRoute()
 const match = ref<GameMatchDetails | null>(null)
@@ -13,6 +14,7 @@ const loading = ref(true)
 const error = ref('')
 const refreshError = ref('')
 const connection = ref<'connecting' | 'connected' | 'disconnected' | 'unconfigured'>('connecting')
+const mapImageLoaded = ref(false)
 let timer: ReturnType<typeof setInterval> | undefined
 let requestId = 0
 let pending = false
@@ -32,6 +34,17 @@ const teams = computed(() => match.value ? [
   { side: 'CT', name: match.value.roundTeams[0].name || 'Спецназ', players: match.value.playersCt },
   { side: 'T', name: match.value.roundTeams[1].name || 'Террористы', players: match.value.playersT },
 ] : [])
+
+const mapImage = computed(() => {
+  return match.value ? matchMapImage(match.value.map) : null
+})
+
+watch(mapImage, () => { mapImageLoaded.value = false })
+
+function onMapImageError() {
+  mapImageLoaded.value = false
+  console.warn('Изображение карты недоступно:', mapImage.value)
+}
 
 function initials(name: string | null | undefined) {
   return Array.from(name?.trim() || '?').slice(0, 2).join('').toLocaleUpperCase()
@@ -163,7 +176,13 @@ onUnmounted(() => {
         <span class="donut-status" :class="`is-${match.status}`">{{ { live: 'Live', finished: 'Завершён', preparing: 'Подготовка', cancelled: 'Отменён' }[match.status] }}</span>
       </header>
 
-      <section class="match-hero" aria-label="Результат матча">
+      <section class="match-hero" :class="{ 'has-map-image': mapImageLoaded }" aria-label="Результат матча">
+        <div class="match-hero-art" aria-hidden="true">
+          <img v-if="mapImage" :key="mapImage" class="match-hero-map" :src="mapImage" alt="" @load="mapImageLoaded = true" @error="onMapImageError" />
+          <div class="match-hero-shade"></div>
+          <img class="match-hero-character is-ct" :src="'/uploads/maps/ct.png'" alt="" />
+          <img class="match-hero-character is-t" :src="'/uploads/maps/tt.png'" alt="" />
+        </div>
         <div class="match-hero-top"><span><Swords :size="14" /> {{ match.mode }} · {{ match.format || 'Формат не указан' }}</span><span>МАТЧ #{{ match.id }}</span></div>
         <div class="match-hero-scoreboard">
           <div class="match-hero-team"><span class="match-team-emblem is-a">{{ initials(match.teamA.name) }}</span><strong>{{ match.teamA.name || 'Команда CT' }}</strong><small>КОМАНДА 1</small></div>
