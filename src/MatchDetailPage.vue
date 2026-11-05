@@ -249,7 +249,17 @@ onUnmounted(() => {
             <div v-if="team.players.length" class="match-player-table">
               <div class="match-player-head"><span>ИГРОК</span><span title="Убийства">K</span><span title="Смерти">D</span></div>
               <div v-for="(player, index) in team.players" :key="`${index}-${player.name}`" class="match-player-row">
-                <div><span class="match-player-avatar">{{ initials(player.name) }}</span><strong>{{ player.name }}</strong></div><span>{{ playerStat(player, 'kills') }}</span><span>{{ playerStat(player, 'deaths') }}</span>
+                <div class="match-player-identity">
+                  <img v-if="player.account?.avatarUrl" class="match-player-avatar" :src="player.account.avatarUrl" :alt="player.account.nickname" />
+                  <span v-else class="match-player-avatar">{{ initials(player.name) }}</span>
+                  <span class="match-player-label">
+                    <RouterLink v-if="player.account" :to="player.account.profileUrl">{{ player.account.nickname }}</RouterLink>
+                    <strong v-else>{{ player.name }}</strong>
+                    <small v-if="player.account && player.account.nickname !== player.name">Игровой ник: {{ player.name }}</small>
+                  </span>
+                </div>
+                <span>{{ playerStat(player, 'kills') }}</span>
+                <span>{{ playerStat(player, 'deaths') }}</span>
               </div>
             </div>
             <div v-else class="match-detail-empty">Данные об игроках не получены.</div>
