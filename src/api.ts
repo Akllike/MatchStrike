@@ -166,13 +166,65 @@ export interface GameMatch {
   scoreType: 'maps' | 'rounds'
   roundTeams: [{ name?: string | null; score: number }, { name?: string | null; score: number }]
   updatedAt: string
+  playerSide?: 'ct' | 't' | null
+  playerResult?: 'win' | 'loss' | 'draw' | null
+}
+
+export interface PlayerMatchesPage {
+  matches: GameMatch[]
+  pagination: { currentPage: number; lastPage: number; total: number; perPage: number }
 }
 
 export interface GameMatchesPage {
   connected: boolean
   hasMatches: boolean
   matches: GameMatch[]
+  finishedMatches: number
   pagination: { currentPage: number; lastPage: number; total: number }
+}
+
+export type BanStatusFilter = 'all' | 'active' | 'expired'
+
+export interface SourceBan {
+  id: number
+  serverId: number
+  serverName: string
+  player: string
+  authId: string
+  reason: string
+  createdAt: string | null
+  endsAt: string | null
+  length: number
+  permanent: boolean
+  status: 'active' | 'expired'
+  account: {
+    id: number
+    nickname: string
+    avatarUrl: string | null
+    profileUrl: string
+  } | null
+}
+
+export interface SourceBansPage {
+  connected: boolean
+  bans: SourceBan[]
+  counts: Record<BanStatusFilter, number>
+  pagination: { currentPage: number; lastPage: number; total: number; perPage: number }
+}
+
+export type AdminBanStatusFilter = 'all' | 'active' | 'expired' | 'unbanned' | 'deleted'
+
+export interface AdminSourceBan extends Omit<SourceBan, 'status' | 'account'> {
+  ip: string
+  status: 'active' | 'expired' | 'unbanned' | 'deleted'
+  unbanReason: string | null
+}
+
+export interface AdminSourceBansPage {
+  connected: boolean
+  bans: AdminSourceBan[]
+  counts: Record<AdminBanStatusFilter, number>
+  pagination: { currentPage: number; lastPage: number; total: number; perPage: number }
 }
 
 export interface MatchPlayer {
@@ -251,7 +303,7 @@ export interface PlayerProfile {
   friendshipStatus: 'pending' | 'incoming' | 'accepted' | null
   stats: ProfileStats | null
   friends: FriendSummary[]
-  recentMatches: PlayerMatch[]
+  recentMatches: GameMatch[]
   mapWinRates: MapWinRate[]
 }
 
@@ -294,6 +346,16 @@ export interface NotificationSettings {
   subscriptionCount: number
 }
 
+export interface AdminBroadcastResult {
+  status: 'sent'
+  sender: string
+  totalUsers: number
+  sent: number
+  skippedByPreferences: number
+  offlineWithPushSubscription: number
+  failed: number
+}
+
 export interface FriendRequestResult {
   status: 'pending' | 'incoming' | 'accepted'
   alreadySent?: boolean
@@ -321,6 +383,7 @@ export interface LoginResponse {
 export interface AccountSession {
   id: number
   device: string
+  deviceType: 'mobile' | 'tablet' | 'desktop'
   ipAddress: string | null
   lastActivity: string | null
   isCurrent: boolean
@@ -522,6 +585,43 @@ export async function getGameMatch(id: string): Promise<GameMatchDetails> {
   return data.match
 }
 
+export async function getBans(page = 1, search = '', status: BanStatusFilter = 'all'): Promise<SourceBansPage> {
+  const params = new URLSearchParams({ page: String(page), status })
+  if (search.trim()) params.set('search', search.trim())
+  const response = await fetch(`${apiBaseUrl}/bans?${params}`, {
+    cache: 'no-store',
+    headers: { Accept: 'application/json' },
+  })
+  return readJson<SourceBansPage>(response)
+}
+
+export async function getAdminBans(page = 1, search = '', status: AdminBanStatusFilter = 'all'): Promise<AdminSourceBansPage> {
+  const params = new URLSearchParams({ page: String(page), status })
+  if (search.trim()) params.set('search', search.trim())
+  const response = await fetch(`${apiBaseUrl}/admin/bans?${params}`, {
+    credentials: 'include',
+    cache: 'no-store',
+    headers: { Accept: 'application/json' },
+  })
+  return readJson<AdminSourceBansPage>(response)
+}
+
+export async function updateAdminBan(
+  serverId: number,
+  banId: number,
+  payload: { player: string; authId: string; ip: string; reason: string; permanent: boolean; endsAt: number | null },
+): Promise<void> {
+  await mutateJson<{ status: string }>(`${apiBaseUrl}/admin/servers/${serverId}/bans/${banId}`, 'PUT', payload)
+}
+
+export async function unbanAdminBan(serverId: number, banId: number, reason = ''): Promise<void> {
+  await postJson<{ status: string }>(`${apiBaseUrl}/admin/servers/${serverId}/bans/${banId}/unban`, { reason })
+}
+
+export async function deleteAdminBan(serverId: number, banId: number): Promise<void> {
+  await mutateJson<{ status: string }>(`${apiBaseUrl}/admin/servers/${serverId}/bans/${banId}`, 'DELETE')
+}
+
 export async function saveAdminServerIntegration(
   serverId: number,
   integration: AdminServerIntegration,
@@ -531,6 +631,17 @@ export async function saveAdminServerIntegration(
     `${apiBaseUrl}/admin/servers/${serverId}/integrations/${integration}`,
     'PUT',
     config,
+  )
+  return data.server
+}
+
+export async function disconnectAdminServerIntegration(
+  serverId: number,
+  integration: AdminServerIntegration,
+): Promise<AdminGameServer> {
+  const data = await mutateJson<{ server: AdminGameServer }>(
+    `${apiBaseUrl}/admin/servers/${serverId}/integrations/${integration}`,
+    'DELETE',
   )
   return data.server
 }
@@ -608,6 +719,15 @@ export async function logoutAccount(): Promise<void> {
   await postAuth('logout')
 }
 
+export async function getPlayerMatches(nickname: string, page = 1): Promise<PlayerMatchesPage> {
+  const params = new URLSearchParams({ page: String(page) })
+  const response = await fetch(`${apiBaseUrl}/users/${encodeURIComponent(nickname)}/matches?${params}`, {
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  })
+  return readJson<PlayerMatchesPage>(response)
+}
+
 export async function getPlayerProfile(nickname: string): Promise<PlayerProfile> {
   const response = await fetch(`${apiBaseUrl}/users/${encodeURIComponent(nickname)}`, {
     credentials: 'include',
@@ -633,6 +753,15 @@ export async function getIncomingFriendRequests(): Promise<IncomingFriendRequest
   })
   const data = await readJson<{ requests: IncomingFriendRequest[] }>(response)
   return data.requests
+}
+
+export function sendAdminBroadcastNotification(payload: {
+  sender: string
+  title: string
+  message: string
+  link: string
+}): Promise<AdminBroadcastResult> {
+  return postJson<AdminBroadcastResult>(`${apiBaseUrl}/admin/notifications`, payload)
 }
 
 export async function getAppNotifications(): Promise<{ notifications: AppNotification[]; unreadCount: number }> {

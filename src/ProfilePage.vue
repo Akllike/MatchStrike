@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Activity, CalendarDays, Check, Film, Flag, Share2, Target, Upload, UserPlus, UserRound, UserRoundMinus, Users, X } from '@lucide/vue'
-import MatchList from './components/MatchList.vue'
+import { Activity, CalendarDays, Check, Film, Flag, Share2, Target, Trophy, Upload, UserPlus, UserRound, UserRoundMinus, Users, X, ChevronLeft, ChevronRight } from '@lucide/vue'
 import PageLoader from './components/PageLoader.vue'
-import { socialProfileUrl } from './socialLinks'
-import { ApiRequestError, getPlayerProfile, removeFriendFromList, reportPlayer, sendFriendRequest, updateProfileMedia } from './api'
-import type { AuthUser, PlayerProfile } from './api'
+import ProfileMatchList from './components/ProfileMatchList.vue'
+import { socialIdFromValue, socialProfileUrl } from './socialLinks'
+import { ApiRequestError, getPlayerMatches, getPlayerProfile, removeFriendFromList, reportPlayer, sendFriendRequest, updateProfileMedia } from './api'
+import type { AuthUser, GameMatch, PlayerProfile } from './api'
 
 const emit = defineEmits<{
   accountUpdated: [user: AuthUser]
@@ -47,16 +47,24 @@ const activeMediaSpec = computed(() => mediaDialog.value ? mediaSpecs[mediaDialo
 const profileTabs = [
   { id: 'overview', label: 'Основное', icon: UserRound },
   { id: 'statistics', label: 'Статистика', icon: Activity },
+  { id: 'matches', label: 'Матчи', icon: Trophy },
   { id: 'moments', label: 'Моменты', icon: Film },
   { id: 'friends', label: 'Друзья', icon: Users },
 ] as const
 type ProfileTabId = typeof profileTabs[number]['id']
 const activeProfileTab = ref<ProfileTabId>('overview')
+const profileMatches = ref<GameMatch[]>([])
+const profileMatchesPage = ref(1)
+const profileMatchesLastPage = ref(1)
+const profileMatchesTotal = ref(0)
+const profileMatchesLoading = ref(false)
+const profileMatchesError = ref('')
+let profileMatchesRequest = 0
 const profileTabElements = ref<HTMLButtonElement[]>([])
 
 function focusProfileTab(index: number) {
   const nextIndex = (index + profileTabs.length) % profileTabs.length
-  activeProfileTab.value = profileTabs[nextIndex].id
+  selectProfileTab(profileTabs[nextIndex].id)
   nextTick(() => profileTabElements.value[nextIndex]?.focus())
 }
 
@@ -139,6 +147,14 @@ async function loadProfile() {
   loading.value = true
   loadError.value = ''
   actionMessage.value = ''
+  profileMatches.value = []
+  profileMatchesPage.value = 1
+  profileMatchesLastPage.value = 1
+  profileMatchesTotal.value = 0
+  profileMatchesError.value = ''
+  profileMatchesLoading.value = false
+  profileMatchesRequest++
+  activeProfileTab.value = 'overview'
   dismissSuccessToast()
 
   try {
@@ -152,6 +168,40 @@ async function loadProfile() {
     loading.value = false
   }
 }
+
+async function loadProfileMatches(page = 1) {
+  if (!nickname.value || profileMatchesLoading.value) return
+  const requestId = ++profileMatchesRequest
+  profileMatchesLoading.value = true
+  profileMatchesError.value = ''
+  try {
+    const data = await getPlayerMatches(nickname.value, page)
+    if (requestId !== profileMatchesRequest) return
+    profileMatches.value = data.matches
+    profileMatchesPage.value = data.pagination.currentPage
+    profileMatchesLastPage.value = data.pagination.lastPage
+    profileMatchesTotal.value = data.pagination.total
+  } catch (error) {
+    if (requestId === profileMatchesRequest) {
+      profileMatchesError.value = error instanceof Error ? error.message : 'Не удалось загрузить матчи.'
+    }
+  } finally {
+    if (requestId === profileMatchesRequest) profileMatchesLoading.value = false
+  }
+}
+
+function selectProfileTab(tab: ProfileTabId) {
+  activeProfileTab.value = tab
+  if (tab === 'matches' && !profileMatches.value.length && profileMatchesTotal.value === 0 && !profileMatchesLoading.value) {
+    void loadProfileMatches(1)
+  }
+}
+
+function changeProfileMatchesPage(page: number) {
+  if (page < 1 || page > profileMatchesLastPage.value || profileMatchesLoading.value) return
+  void loadProfileMatches(page)
+}
+
 
 function openMediaDialog(field: 'avatar' | 'cover') {
   mediaDialog.value = field
@@ -272,11 +322,18 @@ async function confirmRemoveFriend() {
 }
 
 const socialPlatforms = [
-  { id: 'telegram', label: 'Telegram' }, { id: 'instagram', label: 'Instagram' },
-  { id: 'youtube', label: 'YouTube' }, { id: 'twitch', label: 'Twitch' },
-  { id: 'trovo', label: 'Trovo' }, { id: 'boosty', label: 'Boosty' },
+  { id: 'telegram', label: 'Telegram', icon: 'telegram-svgrepo-com.svg' },
+  { id: 'instagram', label: 'Instagram', icon: 'instagram-1-svgrepo-com.svg' },
+  { id: 'youtube', label: 'YouTube', icon: 'youtube-svgrepo-com.svg' },
+  { id: 'twitch', label: 'Twitch', icon: 'twitch-v2-svgrepo-com.svg' },
+  { id: 'trovo', label: 'Trovo', icon: 'trovo.svg' },
+  { id: 'boosty', label: 'Boosty', icon: 'boosty.svg' },
 ] as const
 const visibleSocialPlatforms = computed(() => socialPlatforms.filter(({ id }) => profile.value?.socialLinks?.[id]))
+
+function socialUsername(platform: typeof socialPlatforms[number]['id']): string {
+  return socialIdFromValue(platform, profile.value?.socialLinks?.[platform])
+}
 
 function openReportDialog() {
   if (!profile.value) return
@@ -366,7 +423,7 @@ watch(nickname, loadProfile, { immediate: true })
         :aria-selected="activeProfileTab === tab.id"
         :aria-controls="`profile-panel-${tab.id}`"
         :tabindex="activeProfileTab === tab.id ? 0 : -1"
-        @click="activeProfileTab = tab.id"
+        @click="selectProfileTab(tab.id)"
         @keydown.right.prevent="focusProfileTab(index + 1)"
         @keydown.left.prevent="focusProfileTab(index - 1)"
         @keydown.home.prevent="focusProfileTab(0)"
@@ -411,13 +468,24 @@ watch(nickname, loadProfile, { immediate: true })
         <div class="profile-overview-aside">
           <section class="profile-aside-card" aria-labelledby="profile-social-title">
             <div class="profile-aside-title"><Share2 :size="15" /><h3 id="profile-social-title">Социальные сети</h3></div>
-            <div v-if="visibleSocialPlatforms.length" class="profile-social-links">
-              <a v-for="platform in visibleSocialPlatforms" :key="platform.id" class="profile-social-link" :href="socialProfileUrl(platform.id, profile?.socialLinks?.[platform.id]) ?? undefined" target="_blank" rel="noopener noreferrer"><Share2 :size="13" /> {{ platform.label }} <span aria-hidden="true">↗</span></a>
+            <div v-if="visibleSocialPlatforms.length" class="profile-friends-stack profile-social-stack">
+              <a
+                v-for="platform in visibleSocialPlatforms"
+                :key="platform.id"
+                class="profile-friends-stack-item profile-social-stack-item"
+                :href="socialProfileUrl(platform.id, profile?.socialLinks?.[platform.id]) ?? undefined"
+                target="_blank"
+                rel="noopener noreferrer"
+                :title="`${platform.label} · ${socialUsername(platform.id)}`"
+                :aria-label="`Открыть ${platform.label}: ${socialUsername(platform.id)}`"
+              >
+                <img :src="`/uploads/icons/${platform.icon}`" alt="" aria-hidden="true" width="38" height="38" loading="lazy" />
+              </a>
             </div>
             <p v-else class="profile-aside-note">Пользователь пока не добавил ссылки на социальные сети.</p>
           </section>
           <section class="profile-aside-card" aria-labelledby="profile-friends-mini-title">
-            <div class="profile-aside-title"><Users :size="15" /><h3 id="profile-friends-mini-title">Друзья</h3><button v-if="profile.friends.length" class="profile-friends-open" type="button" @click="activeProfileTab = 'friends'">Все друзья · {{ profile.friends.length }}</button></div>
+            <div class="profile-aside-title"><Users :size="15" /><h3 id="profile-friends-mini-title">Друзья</h3><button v-if="profile.friends.length" class="profile-friends-open" type="button" @click="selectProfileTab('friends')">Все друзья · {{ profile.friends.length }}</button></div>
             <template v-if="profile.friends.length">
               <div class="profile-friends-stack">
                 <RouterLink
@@ -436,7 +504,7 @@ watch(nickname, loadProfile, { immediate: true })
                   class="profile-friends-stack-item profile-friends-stack-more"
                   type="button"
                   :title="`Все друзья: ${profile.friends.length}`"
-                  @click="activeProfileTab = 'friends'"
+                  @click="selectProfileTab('friends')"
                 >+{{ profile.friends.length - 5 }}</button>
               </div>
             </template>
@@ -449,14 +517,16 @@ watch(nickname, loadProfile, { immediate: true })
     <section class="profile-section" aria-labelledby="profile-matches-title">
       <div class="section-heading">
         <div><div class="section-kicker">RECENT ACTIVITY</div><h2 id="profile-matches-title">Последние матчи</h2></div>
-        <span class="section-count">{{ profile.recentMatches.length.toString().padStart(2, '0') }} <span>МАТЧЕЙ</span></span>
+        <div class="profile-matches-heading-actions">
+          <button
+            v-if="profile.recentMatches.length"
+            class="profile-matches-more inline-flex items-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-sky-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 dark:bg-sky-500 dark:hover:bg-sky-400"
+            type="button"
+            @click="selectProfileTab('matches')"
+          >Все матчи <ChevronRight :size="14" /></button>
+        </div>
       </div>
-      <MatchList
-        :matches="profile.recentMatches"
-        :limit="5"
-        empty-title="История матчей пока пуста"
-        empty-description="Последние игры игрока появятся после подключения матчевой статистики."
-      />
+      <ProfileMatchList :matches="profile.recentMatches.slice(0, 5)" />
     </section>
 
     <section class="profile-section" aria-labelledby="map-winrate-title">
@@ -518,6 +588,28 @@ watch(nickname, loadProfile, { immediate: true })
           <div><strong>Нет данных по картам</strong><span>Винрейт появится после завершённых матчей.</span></div>
         </div>
       </section>
+    </section>
+
+    <section
+      v-else-if="!profile.isBlocked && activeProfileTab === 'matches'"
+      id="profile-panel-matches"
+      class="profile-tab-panel profile-section"
+      role="tabpanel"
+      aria-labelledby="profile-tab-matches"
+      tabindex="0"
+    >
+      <div class="section-heading">
+        <div><div class="section-kicker">MATCH HISTORY</div><h2>Все матчи игрока</h2></div>
+        <span class="section-count">{{ profileMatchesTotal.toString().padStart(2, '0') }} <span>МАТЧЕЙ</span></span>
+      </div>
+      <p v-if="profileMatchesError" class="auth-message" role="alert">{{ profileMatchesError }} <button class="auth-inline-link" type="button" @click="loadProfileMatches(profileMatchesPage)">Повторить</button></p>
+      <PageLoader v-else-if="profileMatchesLoading && !profileMatches.length" message="Загружаем историю матчей…" />
+      <ProfileMatchList v-else :matches="profileMatches" />
+      <div v-if="profileMatchesLastPage > 1" class="donut-pagination profile-matches-pagination">
+        <button class="friend-action" type="button" :disabled="profileMatchesPage <= 1 || profileMatchesLoading" aria-label="Предыдущая страница" @click="changeProfileMatchesPage(profileMatchesPage - 1)"><ChevronLeft :size="16" /></button>
+        <span>{{ profileMatchesPage }} / {{ profileMatchesLastPage }}</span>
+        <button class="friend-action" type="button" :disabled="profileMatchesPage >= profileMatchesLastPage || profileMatchesLoading" aria-label="Следующая страница" @click="changeProfileMatchesPage(profileMatchesPage + 1)"><ChevronRight :size="16" /></button>
+      </div>
     </section>
 
     <section

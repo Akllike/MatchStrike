@@ -857,8 +857,8 @@ onBeforeUnmount(() => {
                 <p v-if="notificationsLoading && !notifications.length" class="notifications-panel-message">Загружаем уведомления…</p>
                 <p v-else-if="notificationsError" class="notifications-panel-message" role="alert">{{ notificationsError }}</p>
                 <div v-else-if="notifications.length" class="notifications-list">
-                  <RouterLink v-for="notification in notifications" :key="notification.id" class="notification-item" :class="{ 'is-unread': !notification.isRead }" :to="notification.link || '/friends'" @click="openNotification(notification)">
-                    <span class="notification-item-copy"><strong>{{ notification.title }}</strong><span>{{ notification.message }}</span></span>
+                  <RouterLink v-for="notification in notifications" :key="notification.id" class="notification-item" :class="{ 'is-unread': !notification.isRead }" :to="notification.link || (notification.data.broadcast === true ? '/' : '/friends')" @click="openNotification(notification)">
+                    <span class="notification-item-copy"><small v-if="typeof notification.data.sender === 'string'" class="notification-item-sender">От {{ notification.data.sender }}</small><strong>{{ notification.title }}</strong><span>{{ notification.message }}</span></span>
                     <time v-if="notification.createdAt" :datetime="notification.createdAt">{{ notificationDateLabel(notification.createdAt) }}</time>
                   </RouterLink>
                 </div>

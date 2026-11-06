@@ -1,33 +1,37 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Activity, Ban, CircleHelp, Database, Gamepad2, Image, KeyRound, Link2, Pencil, Plus, RefreshCw, Search, Settings, ShieldCheck, Terminal, Trash2, Users, X } from '@lucide/vue'
+import { Activity, Ban, CircleHelp, Database, Gamepad2, Image, KeyRound, Link2, Pencil, Plus, RefreshCw, Search, Settings, ShieldCheck, Terminal, Trash2, Users, X, ChevronLeft, ChevronRight } from '@lucide/vue'
 import PageLoader from './components/PageLoader.vue'
 import TicketWorkspace from './components/TicketWorkspace.vue'
+import AdminSubnav from './components/AdminSubnav.vue'
 import {
   getAdminOverview,
   connectDonutMatch,
   disconnectDonutMatch,
   getAdminStatisticsSource,
   getAdminServers,
-  getAdminServerIntegrationData,
   getAdminUsers,
   getCurrentUser,
   deleteAdminServer,
+  deleteAdminBan,
+  disconnectAdminServerIntegration,
+  getAdminBans,
   deleteAdminUserMedia,
   executeAdminServerRcon,
   refreshAdminServerQuery,
   saveAdminServer,
   saveAdminServerIntegration,
   updateAdminUser,
+  updateAdminBan,
+  unbanAdminBan,
   updateAdminUserBlockStatus,
   updateAdminUserPassword,
   updateAdminUserRole,
   updateAdminStatisticsSource,
   deleteAdminUser,
 } from './api'
-import type { AdminGameServer, AdminIntegrationRecord, AdminOverviewStats, AdminRole, AdminServerDatabaseConfig, AdminServerIntegration, AdminUserSummary, StatisticsSource } from './api'
-import { adminSections, canAccessAdmin } from './adminAccess'
+import type { AdminBanStatusFilter, AdminGameServer, AdminOverviewStats, AdminRole, AdminServerDatabaseConfig, AdminServerIntegration, AdminSourceBan, AdminUserSummary, StatisticsSource } from './api'
 import type { AdminSection } from './adminAccess'
 
 const route = useRoute()
@@ -73,12 +77,23 @@ const integrationForm = ref({
   killsColumn: '', deathsColumn: '', pointsColumn: '', rankColumn: '',
 })
 type IntegrationColumnKey = keyof typeof integrationForm.value
-const integrationRecords = ref<AdminIntegrationRecord[]>([])
-const integrationLoading = ref(false)
 const rconCommand = ref('')
 const rconOutput = ref('')
 const refreshingServerId = ref<number | null>(null)
 const deletingServerId = ref<number | null>(null)
+const adminBans = ref<AdminSourceBan[]>([])
+const adminBanCounts = ref<Record<AdminBanStatusFilter, number>>({ all: 0, active: 0, expired: 0, unbanned: 0, deleted: 0 })
+const adminBanSearch = ref('')
+const adminBanStatus = ref<AdminBanStatusFilter>('all')
+const adminBanPage = ref(1)
+const adminBanLastPage = ref(1)
+const adminBanTotal = ref(0)
+const adminBansLoading = ref(false)
+const adminBansError = ref('')
+const selectedBan = ref<AdminSourceBan | null>(null)
+const banForm = ref({ player: '', authId: '', ip: '', reason: '', permanent: false, endsAt: '' })
+const banAction = ref<'save' | 'unban' | 'delete' | null>(null)
+const banDialogError = ref('')
 
 const integrationColumnFields = computed<{ key: IntegrationColumnKey; label: string }[]>(() => integrationType.value === 'sourcebans'
   ? [
@@ -103,7 +118,14 @@ const activeIntegrationSettings = computed(() => {
     : activeServer.value.levelsSettings
 })
 
-const visibleSections = computed(() => adminSections.filter((item) => canAccessAdmin(adminRole.value, item.id)))
+const sectionIcons = {
+  users: Users,
+  tickets: CircleHelp,
+  servers: Gamepad2,
+  statistics: Activity,
+  bans: Ban,
+  mutes: X,
+} satisfies Record<AdminSection, typeof Users>
 const sectionLabels: Record<AdminSection | 'overview', string> = {
   overview: 'Обзор',
   users: 'Пользователи',
@@ -113,17 +135,8 @@ const sectionLabels: Record<AdminSection | 'overview', string> = {
   bans: 'Баны',
   mutes: 'Муты',
 }
-const sectionIcons = {
-  users: Users,
-  tickets: CircleHelp,
-  servers: Gamepad2,
-  statistics: Activity,
-  bans: Ban,
-  mutes: X,
-} satisfies Record<AdminSection, typeof Users>
 const sectionDescriptions: Partial<Record<AdminSection, string>> = {
   servers: 'Управление игровыми серверами пока не подключено.',
-  bans: 'Реестр блокировок пока не подключён.',
   mutes: 'Реестр ограничений чата пока не подключён.',
 }
 const roleOptions: { value: AdminRole; label: string }[] = [
@@ -291,7 +304,6 @@ function closeServerDialog(force = false) {
   activeServer.value = null
   serverDialogError.value = ''
   serverDialogStatus.value = ''
-  integrationRecords.value = []
   rconOutput.value = ''
   donutToken.value = ''
 }
@@ -417,22 +429,7 @@ function openIntegration(server: AdminGameServer, integration: AdminServerIntegr
   }
   serverDialogError.value = ''
   serverDialogStatus.value = ''
-  integrationRecords.value = []
   serverDialog.value = 'integration'
-  if (settings) void loadIntegrationRecords()
-}
-
-async function loadIntegrationRecords() {
-  if (!activeServer.value) return
-  integrationLoading.value = true
-  serverDialogError.value = ''
-  try {
-    integrationRecords.value = await getAdminServerIntegrationData(activeServer.value.id, integrationType.value)
-  } catch (requestError) {
-    serverDialogError.value = requestError instanceof Error ? requestError.message : 'Не удалось загрузить данные интеграции.'
-  } finally {
-    integrationLoading.value = false
-  }
 }
 
 async function saveIntegrationForm() {
@@ -465,9 +462,24 @@ async function saveIntegrationForm() {
     }
     replaceServer(await saveAdminServerIntegration(activeServer.value.id, integrationType.value, payload))
     serverDialogStatus.value = 'Подключение проверено, настройки сохранены.'
-    await loadIntegrationRecords()
   } catch (requestError) {
     serverDialogError.value = requestError instanceof Error ? requestError.message : 'Не удалось подключить базу данных.'
+  } finally {
+    serverAction.value = false
+  }
+}
+
+async function disconnectIntegration() {
+  if (!activeServer.value || serverAction.value || !activeIntegrationSettings.value) return
+  const integrationLabel = integrationType.value === 'sourcebans' ? 'SourceBans' : 'Levels Ranks'
+  if (!window.confirm(`Отключить ${integrationLabel} от сервера ${activeServer.value.name || activeServer.value.ip}?`)) return
+  serverAction.value = true
+  serverDialogError.value = ''
+  try {
+    replaceServer(await disconnectAdminServerIntegration(activeServer.value.id, integrationType.value))
+    closeServerDialog(true)
+  } catch (requestError) {
+    serverDialogError.value = requestError instanceof Error ? requestError.message : `Не удалось отключить ${integrationLabel}.`
   } finally {
     serverAction.value = false
   }
@@ -492,6 +504,147 @@ async function runRcon() {
     serverDialogError.value = requestError instanceof Error ? requestError.message : 'Не удалось выполнить RCON-команду.'
   } finally {
     serverAction.value = false
+  }
+}
+
+const banStatusOptions: { value: AdminBanStatusFilter; label: string }[] = [
+  { value: 'all', label: 'Все' },
+  { value: 'active', label: 'Активные' },
+  { value: 'expired', label: 'Истёкшие' },
+  { value: 'unbanned', label: 'Разбаненные' },
+  { value: 'deleted', label: 'Удалённые' },
+]
+
+async function loadAdminBans() {
+  adminBansLoading.value = true
+  adminBansError.value = ''
+  try {
+    const data = await getAdminBans(adminBanPage.value, adminBanSearch.value, adminBanStatus.value)
+    adminBans.value = data.bans
+    adminBanCounts.value = data.counts
+    adminBanTotal.value = data.pagination.total
+    adminBanLastPage.value = data.pagination.lastPage
+  } catch (requestError) {
+    adminBansError.value = requestError instanceof Error ? requestError.message : 'Не удалось загрузить список банов.'
+  } finally {
+    adminBansLoading.value = false
+  }
+}
+
+function searchAdminBans() {
+  adminBanPage.value = 1
+  void loadAdminBans()
+}
+
+function selectAdminBanStatus(value: AdminBanStatusFilter) {
+  if (adminBanStatus.value === value) return
+  adminBanStatus.value = value
+  adminBanPage.value = 1
+  void loadAdminBans()
+}
+
+function changeAdminBanPage(value: number) {
+  adminBanPage.value = value
+  void loadAdminBans()
+}
+
+function dateTimeLocal(value: string | null): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+  return local.toISOString().slice(0, 16)
+}
+
+function formatDateTime(value: string | null): string {
+  if (!value) return '—'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('ru-RU', { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+function banStatusLabel(ban: AdminSourceBan): string {
+  return {
+    active: ban.permanent ? 'Навсегда' : 'Активен',
+    expired: 'Истёк',
+    unbanned: 'Разбанен',
+    deleted: 'Удалён',
+  }[ban.status]
+}
+
+function editAdminBan(ban: AdminSourceBan) {
+  if (ban.status === 'unbanned' || ban.status === 'deleted') return
+  selectedBan.value = ban
+  banDialogError.value = ''
+  banForm.value = {
+    player: ban.player,
+    authId: ban.authId,
+    ip: ban.ip,
+    reason: ban.reason,
+    permanent: ban.permanent,
+    endsAt: dateTimeLocal(ban.endsAt),
+  }
+}
+
+function closeBanDialog(force = false) {
+  if (banAction.value && !force) return
+  selectedBan.value = null
+  banDialogError.value = ''
+}
+
+async function saveAdminBan() {
+  if (!selectedBan.value || banAction.value) return
+  banAction.value = 'save'
+  banDialogError.value = ''
+  try {
+    const endsAt = banForm.value.permanent || !banForm.value.endsAt
+      ? null
+      : Math.floor(new Date(banForm.value.endsAt).getTime() / 1000)
+    if (!banForm.value.permanent && (!endsAt || !Number.isFinite(endsAt))) {
+      throw new Error('Укажи корректную дату окончания или выбери постоянный бан.')
+    }
+    await updateAdminBan(selectedBan.value.serverId, selectedBan.value.id, {
+      player: banForm.value.player,
+      authId: banForm.value.authId,
+      ip: banForm.value.ip,
+      reason: banForm.value.reason,
+      permanent: banForm.value.permanent,
+      endsAt,
+    })
+    closeBanDialog(true)
+    await loadAdminBans()
+  } catch (requestError) {
+    banDialogError.value = requestError instanceof Error ? requestError.message : 'Не удалось сохранить бан.'
+  } finally {
+    banAction.value = null
+  }
+}
+
+async function unbanAdminEntry(ban: AdminSourceBan) {
+  if (ban.status !== 'active' || !window.confirm(`Снять бан игрока ${ban.player} на сервере «${ban.serverName}»?`)) return
+  banAction.value = 'unban'
+  adminBansError.value = ''
+  try {
+    await unbanAdminBan(ban.serverId, ban.id)
+    await loadAdminBans()
+  } catch (requestError) {
+    adminBansError.value = requestError instanceof Error ? requestError.message : 'Не удалось снять бан.'
+  } finally {
+    banAction.value = null
+  }
+}
+
+async function deleteAdminEntry(ban: AdminSourceBan) {
+  if (ban.status === 'deleted' || !window.confirm(`Пометить бан игрока ${ban.player} как удалённый? Он исчезнет из публичного реестра, но запись останется в истории SourceBans.`)) return
+  banAction.value = 'delete'
+  adminBansError.value = ''
+  try {
+    await deleteAdminBan(ban.serverId, ban.id)
+    closeBanDialog(true)
+    await loadAdminBans()
+  } catch (requestError) {
+    adminBansError.value = requestError instanceof Error ? requestError.message : 'Не удалось удалить бан.'
+  } finally {
+    banAction.value = null
   }
 }
 
@@ -520,6 +673,8 @@ async function loadSection() {
     } else if (section.value === 'servers') {
       serversLoading.value = true
       servers.value = await getAdminServers()
+    } else if (section.value === 'bans') {
+      await loadAdminBans()
     }
   } catch (requestError) {
     error.value = requestError instanceof Error ? requestError.message : 'Не удалось загрузить раздел.'
@@ -596,23 +751,7 @@ watch(section, (next, previous) => {
     <div class="route-intro-mark"><ShieldCheck :size="27" :stroke-width="1.5" /></div>
   </section>
 
-  <nav v-if="adminRole" class="admin-subnav" aria-label="Разделы админ панели">
-    <RouterLink
-      v-if="canAccessAdmin(adminRole, 'overview')"
-      class="admin-subnav-link"
-      :class="{ 'is-active': section === 'overview' }"
-      :to="{ name: 'adminpanel' }"
-    >Обзор</RouterLink>
-    <RouterLink
-      v-for="item in visibleSections"
-      :key="item.id"
-      class="admin-subnav-link"
-      :class="{ 'is-active': section === item.id }"
-      :to="{ name: 'adminpanel-section', params: { section: item.id } }"
-    >
-      <component :is="sectionIcons[item.id]" :size="14" /> {{ item.label }}
-    </RouterLink>
-  </nav>
+  <AdminSubnav :role="adminRole" />
 
   <PageLoader v-if="loading" :message="`Загружаем ${sectionLabels[section].toLowerCase()}…`" />
   <div v-else-if="error" class="admin-error" role="alert">
@@ -746,6 +885,49 @@ watch(section, (next, previous) => {
 
   <section v-else-if="section === 'tickets'" class="admin-content" aria-label="Тикеты">
     <TicketWorkspace admin />
+  </section>
+
+  <section v-else-if="section === 'bans'" class="admin-content" aria-labelledby="admin-bans-title">
+    <div class="section-heading">
+      <div><div class="section-kicker">SOURCEBANS / MODERATION</div><h2 id="admin-bans-title">Реестр банов</h2></div>
+      <span class="section-count">{{ adminBanTotal.toLocaleString('ru-RU') }} <span>ЗАПИСЕЙ</span></span>
+    </div>
+    <form class="admin-ban-search" role="search" @submit.prevent="searchAdminBans">
+      <label class="auth-field"><span>Поиск по нику, Steam ID, IP или причине</span><input v-model.trim="adminBanSearch" class="auth-input" type="search" maxlength="100" placeholder="Например, STEAM_0:0:…" /></label>
+      <button class="friend-action admin-user-search-submit" type="submit" :disabled="adminBansLoading"><Search :size="14" /> Найти</button>
+      <button class="friend-action admin-server-icon-button" type="button" aria-label="Обновить список" title="Обновить список" :disabled="adminBansLoading" @click="loadAdminBans"><RefreshCw :size="14" :class="{ 'is-spinning': adminBansLoading }" /></button>
+    </form>
+    <div class="admin-ban-filters" role="group" aria-label="Фильтр по статусу бана">
+      <button v-for="item in banStatusOptions" :key="item.value" type="button" :aria-pressed="adminBanStatus === item.value" @click="selectAdminBanStatus(item.value)">{{ item.label }} <span>{{ adminBanCounts[item.value].toLocaleString('ru-RU') }}</span></button>
+    </div>
+    <p v-if="adminBansError" class="admin-error-inline" role="alert">{{ adminBansError }}</p>
+    <PageLoader v-if="adminBansLoading" message="Загружаем баны…" />
+    <div v-else-if="adminBans.length" class="admin-table-wrap admin-bans-table-wrap">
+      <table class="admin-bans-table">
+        <thead><tr><th>Игрок</th><th>Причина</th><th>Сервер</th><th>Дата</th><th>Окончание</th><th>Статус</th><th>Действия</th></tr></thead>
+        <tbody>
+          <tr v-for="ban in adminBans" :key="`${ban.serverId}-${ban.id}`">
+            <td class="admin-ban-player"><strong>{{ ban.player }}</strong><code>{{ ban.authId }}</code><small v-if="ban.ip">IP: {{ ban.ip }}</small></td>
+            <td class="admin-ban-reason">{{ ban.reason }}</td>
+            <td>{{ ban.serverName }}</td>
+            <td>{{ formatDateTime(ban.createdAt) }}</td>
+            <td>{{ ban.permanent ? 'Навсегда' : formatDateTime(ban.endsAt) }}</td>
+            <td><span class="admin-ban-status" :class="`is-${ban.status}`">{{ banStatusLabel(ban) }}</span></td>
+            <td><div class="admin-ban-actions">
+              <button class="friend-action" type="button" :disabled="ban.status === 'unbanned' || ban.status === 'deleted' || banAction !== null" @click="editAdminBan(ban)"><Pencil :size="12" /> Изменить</button>
+              <button v-if="ban.status === 'active'" class="friend-action" type="button" :disabled="banAction !== null" @click="unbanAdminEntry(ban)"><Ban :size="12" /> Разбанить</button>
+              <button v-if="ban.status !== 'deleted'" class="admin-danger-button is-delete" type="button" :disabled="banAction !== null" @click="deleteAdminEntry(ban)"><Trash2 :size="12" /> Удалить</button>
+            </div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div v-else-if="!adminBansError" class="admin-placeholder"><Ban :size="20" /><strong>{{ adminBanSearch ? 'Ничего не найдено' : 'Банов пока нет' }}</strong><span>{{ adminBanSearch ? 'Измени поисковый запрос или фильтр.' : 'Для отображения банов подключи SourceBans хотя бы на одном сервере.' }}</span></div>
+    <div v-if="adminBanLastPage > 1 && !adminBansLoading" class="donut-pagination">
+      <button class="friend-action" type="button" :disabled="adminBanPage <= 1" aria-label="Предыдущая страница" @click="changeAdminBanPage(adminBanPage - 1)"><ChevronLeft :size="16" /></button>
+      <span>{{ adminBanPage }} / {{ adminBanLastPage }}</span>
+      <button class="friend-action" type="button" :disabled="adminBanPage >= adminBanLastPage" aria-label="Следующая страница" @click="changeAdminBanPage(adminBanPage + 1)"><ChevronRight :size="16" /></button>
+    </div>
   </section>
 
   <section v-else-if="section !== 'overview'" class="admin-content" :aria-label="sectionLabels[section]">
@@ -895,15 +1077,10 @@ watch(section, (next, previous) => {
           <p v-if="serverDialogError" class="auth-message" role="alert">{{ serverDialogError }}</p>
           <p v-if="serverDialogStatus" class="admin-user-action-status" role="status">{{ serverDialogStatus }}</p>
           <div class="admin-server-dialog-actions">
+            <button v-if="activeIntegrationSettings" class="admin-danger-button is-delete" type="button" :disabled="serverAction" @click="disconnectIntegration">{{ serverAction ? 'Отключаем…' : 'Отключить' }}</button>
             <button class="dialog-secondary" type="button" :disabled="serverAction" @click="closeServerDialog()">Закрыть</button>
             <button class="dialog-primary" type="submit" :disabled="serverAction">{{ serverAction ? 'Проверяем…' : 'Сохранить и проверить' }}</button>
           </div>
-          <section v-if="activeIntegrationSettings" class="admin-integration-results" :aria-label="integrationType === 'sourcebans' ? 'Последние баны' : 'Статистика игроков'">
-            <div class="admin-integration-results-head"><strong>{{ integrationType === 'sourcebans' ? 'Последние баны' : 'Статистика игроков' }}</strong><button class="admin-server-icon-button" type="button" aria-label="Обновить список" title="Обновить список" :disabled="integrationLoading" @click="loadIntegrationRecords"><RefreshCw :size="13" :class="{ 'is-spinning': integrationLoading }" /></button></div>
-            <p v-if="integrationLoading" class="admin-integration-empty">Загружаем данные…</p>
-            <div v-else-if="integrationRecords.length" class="admin-integration-table-wrap"><table class="admin-integration-table"><thead><tr><th v-for="column in Object.keys(integrationRecords[0])" :key="column">{{ column }}</th></tr></thead><tbody><tr v-for="(record, index) in integrationRecords" :key="index"><td v-for="column in Object.keys(integrationRecords[0])" :key="column">{{ record[column] ?? '—' }}</td></tr></tbody></table></div>
-            <p v-else class="admin-integration-empty">Записей пока нет.</p>
-          </section>
         </form>
 
         <div v-else-if="serverDialog === 'donutmatch'" class="info-dialog admin-server-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-donut-title">
@@ -943,4 +1120,31 @@ watch(section, (next, previous) => {
       </div>
     </Transition>
   </Teleport>
+  <Teleport to="body">
+    <Transition name="modal">
+      <div v-if="selectedBan" class="modal-backdrop" @click.self="closeBanDialog()">
+        <form class="info-dialog admin-server-dialog admin-ban-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-ban-dialog-title" @submit.prevent="saveAdminBan">
+          <button class="dialog-close" type="button" aria-label="Закрыть" :disabled="banAction !== null" @click="closeBanDialog()"><X :size="18" /></button>
+          <span class="dialog-mark"><Ban :size="19" /></span>
+          <div class="section-kicker">SOURCEBANS / BAN #{{ selectedBan.id }}</div>
+          <h2 id="admin-ban-dialog-title">Редактирование бана</h2>
+          <p class="admin-server-dialog-subtitle">{{ selectedBan.serverName }}</p>
+          <div class="admin-server-form-fields">
+            <label class="auth-field"><span>Никнейм игрока</span><input v-model.trim="banForm.player" class="auth-input" type="text" maxlength="128" required /></label>
+            <label class="auth-field"><span>Steam ID / auth</span><input v-model.trim="banForm.authId" class="auth-input" type="text" maxlength="64" required /></label>
+            <label class="auth-field"><span>IP-адрес</span><input v-model.trim="banForm.ip" class="auth-input" type="text" maxlength="32" /></label>
+            <label class="auth-field"><span>Причина бана</span><textarea v-model.trim="banForm.reason" class="auth-input admin-ban-reason-input" rows="3" maxlength="1000" required /></label>
+            <label class="admin-ban-permanent"><input v-model="banForm.permanent" type="checkbox" /> <span>Постоянный бан</span></label>
+            <label v-if="!banForm.permanent" class="auth-field"><span>Дата окончания</span><input v-model="banForm.endsAt" class="auth-input" type="datetime-local" required /></label>
+          </div>
+          <p v-if="banDialogError" class="auth-message" role="alert">{{ banDialogError }}</p>
+          <div class="admin-server-dialog-actions">
+            <button class="dialog-secondary" type="button" :disabled="banAction !== null" @click="closeBanDialog()">Отмена</button>
+            <button class="dialog-primary" type="submit" :disabled="banAction !== null">{{ banAction === 'save' ? 'Сохраняем…' : 'Сохранить изменения' }}</button>
+          </div>
+        </form>
+      </div>
+    </Transition>
+  </Teleport>
+
 </template>

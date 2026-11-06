@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { Bell, Camera, Check, KeyRound, Link2, LogOut, Mail, Monitor, Share2, Shield, ShieldCheck, Trash2, Upload, UserRound, X } from '@lucide/vue'
+import { Bell, Camera, Check, KeyRound, Link2, LogOut, Mail, Monitor, Smartphone, Tablet, Share2, Shield, ShieldCheck, Trash2, Upload, UserRound, X } from '@lucide/vue'
 import QRCode from 'qrcode'
 import PageLoader from './components/PageLoader.vue'
 import { socialIdFromValue } from './socialLinks'
@@ -57,9 +57,12 @@ const topToastTone = ref<'success' | 'warning'>('success')
 const socialErrors = ref<Record<string, string[]>>({})
 let topToastTimer: number | undefined
 const socialPlatforms = [
-  { id: 'telegram', label: 'Telegram', placeholder: 'username' }, { id: 'instagram', label: 'Instagram', placeholder: 'username' },
-  { id: 'youtube', label: 'YouTube', placeholder: '@handle или ID канала' }, { id: 'twitch', label: 'Twitch', placeholder: 'username' },
-  { id: 'trovo', label: 'Trovo', placeholder: 'username' }, { id: 'boosty', label: 'Boosty', placeholder: 'username' },
+  { id: 'telegram', label: 'Telegram', placeholder: 'username', icon: 'telegram-svgrepo-com.svg' },
+  { id: 'instagram', label: 'Instagram', placeholder: 'username', icon: 'instagram-1-svgrepo-com.svg' },
+  { id: 'youtube', label: 'YouTube', placeholder: '@handle или ID канала', icon: 'youtube-svgrepo-com.svg' },
+  { id: 'twitch', label: 'Twitch', placeholder: 'username', icon: 'twitch-v2-svgrepo-com.svg' },
+  { id: 'trovo', label: 'Trovo', placeholder: 'username', icon: 'trovo.svg' },
+  { id: 'boosty', label: 'Boosty', placeholder: 'username', icon: 'boosty.svg' },
 ] as const
 const socialForm = reactive({ telegram: '', instagram: '', youtube: '', twitch: '', trovo: '', boosty: '' })
 const steamErrors = ref<Record<string, string[]>>({})
@@ -771,7 +774,14 @@ onBeforeUnmount(() => {
       <div class="panel-heading"><div><div class="section-kicker">SOCIAL PROFILES</div><h2>Социальные сети</h2></div><span class="settings-panel-icon"><Share2 :size="17" /></span></div>
       <form class="settings-block settings-form" @submit.prevent="saveSocialLinks">
         <p class="settings-description">Укажите имя пользователя или ID без полной ссылки. Ссылка на профиль соберётся автоматически. Оставьте поле пустым, чтобы скрыть соцсеть.</p>
-        <label v-for="platform in socialPlatforms" :key="platform.id" class="auth-field"><span>{{ platform.label }}</span><input v-model.trim="socialForm[platform.id]" class="auth-input" type="text" autocomplete="off" :placeholder="platform.placeholder" maxlength="100" :aria-invalid="Boolean(errorFor(socialErrors, `socialLinks.${platform.id}`))" /><span v-if="errorFor(socialErrors, `socialLinks.${platform.id}`)" class="field-error">{{ errorFor(socialErrors, `socialLinks.${platform.id}`) }}</span></label>
+        <div v-for="platform in socialPlatforms" :key="platform.id" class="social-platform-row">
+          <img class="social-platform-icon" :src="`/uploads/icons/${platform.icon}`" alt="" aria-hidden="true" width="30" height="30" loading="lazy" />
+          <label class="auth-field social-platform-field" :for="`social-${platform.id}`">
+            <span>{{ platform.label }}</span>
+            <input :id="`social-${platform.id}`" v-model.trim="socialForm[platform.id]" class="auth-input" type="text" autocomplete="off" :placeholder="platform.placeholder" maxlength="100" :aria-invalid="Boolean(errorFor(socialErrors, `socialLinks.${platform.id}`))" />
+            <span v-if="errorFor(socialErrors, `socialLinks.${platform.id}`)" class="field-error">{{ errorFor(socialErrors, `socialLinks.${platform.id}`) }}</span>
+          </label>
+        </div>
         <p v-if="socialMessage" class="settings-message" role="status">{{ socialMessage }}</p>
         <div class="settings-actions"><span>Ссылки открываются в новой вкладке</span><button class="dialog-primary" type="submit" :disabled="socialBusy">{{ socialBusy ? 'Сохраняем…' : 'Сохранить ссылки' }}</button></div>
       </form>
@@ -848,7 +858,7 @@ onBeforeUnmount(() => {
         <p v-if="sessionsLoading" class="settings-description" role="status">Загружаем сеансы…</p>
         <div v-else-if="sessions.length" class="settings-session-list">
           <article v-for="session in sessions" :key="session.id" class="settings-session-row">
-            <span class="settings-session-icon"><Monitor :size="15" /></span>
+            <span class="settings-session-icon"><component :is="session.deviceType === 'mobile' ? Smartphone : session.deviceType === 'tablet' ? Tablet : Monitor" :size="15" /></span>
             <div class="settings-session-info"><strong>{{ session.device }} <span v-if="session.isCurrent" class="settings-current-session">Текущий</span></strong><span>{{ session.ipAddress || 'IP неизвестен' }} · {{ formatActivity(session.lastActivity) }}</span></div>
             <button v-if="!session.isCurrent" class="settings-remove-button" type="button" :disabled="sessionActionId !== null || revokeOthersBusy" :aria-label="`Завершить сеанс ${session.device}`" title="Завершить сеанс" @click="endSession(session)"><LogOut :size="14" /> {{ sessionActionId === session.id ? 'Завершаем…' : 'Завершить' }}</button>
           </article>

@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Gamepad2, ChevronLeft, ChevronRight, Swords, Users } from '@lucide/vue'
 import { getGameMatches } from './api'
 import type { GameMatch } from './api'
 import PageLoader from './components/PageLoader.vue'
 import { handleMapImageError, matchMapImage } from './matchArtwork'
 
-const mode = ref<'War' | 'Mix'>('Mix')
+const route = useRoute()
+const router = useRouter()
+const mode = computed<'War' | 'Mix'>(() => route.params.mode === 'war' ? 'War' : 'Mix')
 const connected = ref(false)
 const hasArchive = ref(false)
 const matches = ref<GameMatch[]>([])
@@ -32,23 +35,17 @@ const matchGroups = computed(() => {
   ].filter(group => group.matches.length)
 })
 
-async function load(initial = false, quiet = false) {
+async function load(quiet = false) {
   if (quiet && pending) return
   const id = ++requestId
   pending = true
   if (!quiet) loading.value = true
   const minimumLoading = quiet ? Promise.resolve() : new Promise<void>(resolve => setTimeout(resolve, 350))
   try {
-    const data = await getGameMatches(initial ? null : mode.value, page.value)
+    const data = await getGameMatches(mode.value, page.value)
     if (id !== requestId) return
     connected.value = data.connected
     hasArchive.value = data.hasMatches
-    if (initial) {
-      if (data.connected || hasArchive.value) {
-        await load()
-        return
-      }
-    }
     matches.value = data.matches
     total.value = data.pagination.total
     lastPage.value = data.pagination.lastPage
@@ -66,9 +63,11 @@ async function load(initial = false, quiet = false) {
 
 function selectMode(value: 'War' | 'Mix') {
   if (mode.value === value) return
-  mode.value = value
   page.value = 1
-  void load()
+  void router.push({
+    name: 'matches-mode',
+    params: { mode: value.toLowerCase() },
+  })
 }
 
 function changePage(value: number) {
@@ -80,9 +79,14 @@ function statusLabel(status: GameMatch['status']) {
   return { live: 'Live', finished: 'Завершён', preparing: 'Подготовка', cancelled: 'Отменён' }[status]
 }
 
+watch(() => route.params.mode, () => {
+  page.value = 1
+  void load()
+})
+
 onMounted(() => {
-  void load(true)
-  timer = setInterval(() => { if (!document.hidden) void load(false, true) }, 15000)
+  void load()
+  timer = setInterval(() => { if (!document.hidden) void load(true) }, 15000)
 })
 onUnmounted(() => { if (timer) clearInterval(timer); requestId++ })
 </script>

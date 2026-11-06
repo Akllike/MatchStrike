@@ -1,33 +1,43 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { Activity, ArrowRight, Ban, ChevronDown, Gamepad2, Users } from '@lucide/vue'
-import { getApiHealth, getPublicServers } from './api'
-import type { PublicGameServer } from './api'
-import MatchList from './components/MatchList.vue'
+import { ArrowRight, Ban, ChevronDown, Gamepad2, Server, Swords, Users } from '@lucide/vue'
+import { getApiHealth, getGameMatches, getPublicServers } from './api'
+import type { GameMatch, PublicGameServer } from './api'
 
 type ApiState = 'checking' | 'online' | 'offline'
-
-interface MatchRecord {
-  id: string
-  map: string
-  mode: string
-  playedAt: string
-  winner: string
-  score: string
-}
 
 const apiState = ref<ApiState>('checking')
 const openFaqId = ref<string | null>('servers')
 const servers = ref<PublicGameServer[]>([])
 const serversLoading = ref(true)
 const serversError = ref('')
-const recentMatches: MatchRecord[] = []
+const warMatches = ref<GameMatch[]>([])
+const mixMatches = ref<GameMatch[]>([])
+const matchesLoading = ref(true)
+const matchesError = ref('')
 
-const summaryStats = [
-  { label: 'Матчей сыграно', value: '—', note: 'последние матчи', icon: Gamepad2 },
-  { label: 'Победы', value: '—', note: 'процент побед', icon: Activity },
-  { label: 'Игроки онлайн', value: '—', note: 'на всех серверах', icon: Users },
-]
+const finishedMatchesCount = ref<number | null>(null)
+
+const onlinePlayersCount = computed(() => {
+  if (!servers.value.length || servers.value.some(server => server.playersOnline === null)) return null
+  return servers.value.reduce((total, server) => total + (server.playersOnline ?? 0), 0)
+})
+
+const summaryStats = computed(() => [
+  {
+    label: 'Матчей сыграно',
+    value: finishedMatchesCount.value?.toLocaleString('ru-RU') ?? '—',
+    note: 'всего завершённых матчей',
+    icon: Gamepad2,
+  },
+  { label: 'Игровые серверы', value: servers.value.length.toLocaleString('ru-RU'), note: 'в сообществе', icon: Server },
+  {
+    label: 'Игроки онлайн',
+    value: onlinePlayersCount.value?.toLocaleString('ru-RU') ?? '—',
+    note: 'на всех игровых серверах',
+    icon: Users,
+  },
+])
 
 const faqItems = [
   {
@@ -48,9 +58,14 @@ const faqItems = [
   {
     id: 'bans',
     question: 'Где проверить список банов?',
-    answer: 'Откройте раздел «Баны» в боковом меню. Список появится после подключения API модерации.',
+    answer: 'Откройте раздел «Баны», чтобы посмотреть блокировки на игровых серверах, найти игрока по нику или Steam ID и проверить срок бана.',
   },
 ]
+
+const recentMatchSections = computed(() => [
+  { mode: 'Mix' as const, matches: mixMatches.value },
+  { mode: 'War' as const, matches: warMatches.value },
+])
 
 const apiMessage = computed(() => {
   if (apiState.value === 'checking') return 'Проверяем подключение к API.'
@@ -77,13 +92,57 @@ async function loadServers(showError = true) {
   }
 }
 
+async function loadRecentMatches() {
+  matchesLoading.value = true
+  matchesError.value = ''
+
+  try {
+    const [war, mix] = await Promise.all([
+      getGameMatches('War'),
+      getGameMatches('Mix'),
+    ])
+
+    warMatches.value = war.matches.slice(0, 5)
+    mixMatches.value = mix.matches.slice(0, 5)
+    finishedMatchesCount.value = war.finishedMatches
+  } catch (requestError) {
+    matchesError.value = requestError instanceof Error
+      ? requestError.message
+      : 'Не удалось загрузить последние матчи.'
+  } finally {
+    matchesLoading.value = false
+  }
+}
+
+function matchStatusLabel(status: GameMatch['status']) {
+  return {
+    live: 'Live',
+    finished: 'Завершён',
+    preparing: 'Подготовка',
+    cancelled: 'Отменён',
+  }[status]
+}
+
+function matchUpdatedLabel(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime())
+    ? 'Время неизвестно'
+    : date.toLocaleString('ru-RU', {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+}
+
 onMounted(async () => {
   const healthRequest = getApiHealth()
     .then(() => { apiState.value = 'online' })
     .catch(() => { apiState.value = 'offline' })
   const serversRequest = loadServers()
+  const matchesRequest = loadRecentMatches()
 
-  await Promise.all([healthRequest, serversRequest])
+  await Promise.all([healthRequest, serversRequest, matchesRequest])
 })
 </script>
 
@@ -105,7 +164,7 @@ onMounted(async () => {
     <div class="overview-grid">
       <section id="match-stats" class="section-panel stats-panel" aria-labelledby="stats-title">
         <div class="panel-heading">
-          <div><div class="section-kicker">ВАША ФОРМА</div><h2 id="stats-title">Статистика последних матчей</h2></div>
+          <div><div class="section-kicker">ВАША ФОРМА</div><h2 id="stats-title">Статистика матчей</h2></div>
           <span class="panel-index">01</span>
         </div>
         <div class="stats-list">
@@ -167,20 +226,60 @@ onMounted(async () => {
     <section id="last-matches" class="content-section matches-section" aria-labelledby="matches-title">
       <div class="section-heading">
         <div><div class="section-kicker">ИСТОРИЯ ИГР</div><h2 id="matches-title">Последние матчи</h2></div>
-        <span class="section-count">{{ recentMatches.length }} <span>ИЗ 5</span></span>
+        <span class="section-count">2 <span>РЕЖИМА</span></span>
       </div>
-      <MatchList
-        :matches="recentMatches"
-        :limit="5"
-        empty-title="История матчей пока пуста"
-        empty-description="Здесь появятся пять последних матчей сообщества."
-      />
+
+      <div v-if="matchesLoading" class="empty-state section-empty">
+        <span class="empty-icon"><Gamepad2 :size="21" /></span>
+        <div><strong>Загружаем последние матчи</strong><span>Получаем результаты War и Mix.</span></div>
+      </div>
+      <div v-else-if="matchesError" class="empty-state section-empty" role="alert">
+        <span class="empty-icon"><Gamepad2 :size="21" /></span>
+        <div><strong>Не удалось загрузить матчи</strong><span>{{ matchesError }}</span></div>
+        <button class="friend-action" type="button" @click="loadRecentMatches">Повторить</button>
+      </div>
+      <div v-else class="home-recent-matches">
+        <section v-for="group in recentMatchSections" :key="group.mode" class="home-match-column" :aria-label="group.mode + ' матчи'">
+          <div class="donut-group-heading">
+            <Swords v-if="group.mode === 'War'" :size="17" />
+            <Users v-else :size="17" />
+            <h3>{{ group.mode }} — последние матчи</h3>
+            <span class="donut-group-line" aria-hidden="true"></span>
+            <RouterLink class="home-match-all" :to="group.mode === 'War' ? '/matches/war' : '/matches/mix'">Все матчи <ArrowRight :size="14" /></RouterLink>
+          </div>
+
+          <div v-if="group.matches.length" class="home-match-list">
+            <RouterLink
+              v-for="(match, index) in group.matches"
+              :key="match.id"
+              class="server-row home-match-row"
+              :to="{ name: 'match-detail', params: { id: match.id } }"
+            >
+              <span class="server-number">{{ String(index + 1).padStart(2, '0') }}</span>
+              <span class="server-game-icon">
+                <Swords v-if="group.mode === 'War'" :size="17" />
+                <Users v-else :size="17" />
+              </span>
+              <div class="server-main home-match-main">
+                <h3>{{ match.teamA.name || 'Команда CT' }} <span>vs</span> {{ match.teamB.name || 'Команда T' }}</h3>
+                <span>{{ match.serverName ? match.serverName + ' · ' : '' }}{{ match.map }} · {{ matchUpdatedLabel(match.updatedAt) }}</span>
+              </div>
+              <div class="home-match-score">
+                <strong>{{ match.teamA.score ?? '—' }} : {{ match.teamB.score ?? '—' }}</strong>
+                <span class="donut-status" :class="`is-${match.status}`">{{ matchStatusLabel(match.status) }}</span>
+              </div>
+              <span class="server-join" aria-hidden="true"><ArrowRight :size="16" /></span>
+            </RouterLink>
+          </div>
+          <div v-else class="home-match-empty">Пока что матчей нет</div>
+        </section>
+      </div>
     </section>
 
-    <section id="bans" class="bans-strip" aria-label="Раздел банов">
+    <RouterLink id="bans" to="/bans" class="bans-strip" aria-label="Открыть реестр банов">
       <span class="bans-icon"><Ban :size="17" /></span>
-      <div><strong>Баны сообщества</strong><span>Список блокировок станет доступен после подключения API модерации.</span></div>
-      <span class="bans-status">СКОРО</span>
-    </section>
+      <div><strong>Баны сообщества</strong><span>Реестр блокировок на игровых серверах. Поиск по нику, Steam ID и причине.</span></div>
+      <span class="bans-status">ОТКРЫТЬ</span>
+    </RouterLink>
   </div>
 </template>

@@ -10,13 +10,13 @@ export const adminSections = [
 ] as const
 
 export type AdminSection = typeof adminSections[number]['id']
-export type AdminPermission = 'overview' | AdminSection
+export type AdminPermission = 'overview' | AdminSection | 'notifications'
 
 const rolePermissions: Record<AdminRole, readonly AdminPermission[]> = {
   moderator: ['tickets', 'bans', 'mutes'],
   administrator: ['users', 'tickets', 'bans', 'mutes'],
-  high_administrator: ['overview', 'users', 'tickets', 'statistics', 'bans', 'mutes'],
-  developer: ['overview', 'users', 'tickets', 'servers', 'statistics', 'bans', 'mutes'],
+  high_administrator: ['overview', 'users', 'tickets', 'statistics', 'bans', 'mutes', 'notifications'],
+  developer: ['overview', 'users', 'tickets', 'servers', 'statistics', 'bans', 'mutes', 'notifications'],
 }
 
 export function canAccessAdmin(role: AdminRole | null, permission: AdminPermission): boolean {
