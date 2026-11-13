@@ -4,6 +4,8 @@ import { useRoute } from 'vue-router'
 import { Activity, CalendarDays, Check, Film, Flag, LoaderCircle, Share2, Target, Trophy, Upload, UserPlus, UserRound, UserRoundMinus, Users, X } from '@lucide/vue'
 import PageLoader from './components/PageLoader.vue'
 import ProfileMatchList from './components/ProfileMatchList.vue'
+import AdvancedPerformance from './components/AdvancedPerformance.vue'
+import PlayerWeapons from './components/PlayerWeapons.vue'
 import { socialIdFromValue, socialProfileUrl } from './socialLinks'
 import { ApiRequestError, getPlayerMatches, getPlayerProfile, removeFriendFromList, reportPlayer, sendFriendRequest, updateProfileMedia } from './api'
 import type { AuthUser, GameMatch, PlayerProfile } from './api'
@@ -15,6 +17,20 @@ const emit = defineEmits<{
 
 const route = useRoute()
 const profile = ref<PlayerProfile | null>(null)
+type StatsSection = 'overview' | 'advanced' | 'weapons' | 'clutches'
+const statsSections: { id: StatsSection; label: string; icon: typeof Activity }[] = [
+  { id: 'overview', label: 'Обзор', icon: Activity },
+  { id: 'advanced', label: 'Расширенная', icon: Target },
+  { id: 'weapons', label: 'Оружие', icon: Target },
+  { id: 'clutches', label: 'Клатчи', icon: Trophy },
+]
+const activeStatsSection = ref<StatsSection>('overview')
+const activeStatsGroup = ref('all')
+const statsDetails = ref<HTMLDetailsElement | null>(null)
+const formRange = ref<10 | 20 | 50>(10)
+const formRanges = [10, 20, 50] as const
+const selectedFormMatchId = ref<number | null>(null)
+const selectedClutchOpponents = ref(1)
 const loading = ref(true)
 const loadError = ref('')
 const actionMessage = ref('')
@@ -103,37 +119,307 @@ onBeforeUnmount(() => {
 const nickname = computed(() => String(route.params.nickname ?? ''))
 const stats = computed(() => {
   const values = profile.value?.stats
-  const bestRank = values?.servers.reduce<number | null>((best, server) =>
-    server.rank !== null && (best === null || server.rank < best) ? server.rank : best, null) ?? null
+  const matchStats = profile.value?.donutStats
+  const war = profile.value?.donutWarProfile
+  const totals = matchStats?.totals ?? {}
+  const kills = totals.kills ?? values?.kills ?? 0
+  const deaths = totals.deaths ?? values?.deaths ?? 0
+  const rounds = totals.rounds ?? 0
+  const headshots = totals.headshots ?? 0
+  const hasMatchStats = Boolean(matchStats)
+  const eloLevel = war?.elo != null ? war.level ?? 0 : 0
   return [
-    { label: 'Убийства', value: values?.kills ?? '—', note: 'всего на серверах', icon: Activity },
-    { label: 'Смерти', value: values?.deaths ?? '—', note: 'всего на серверах', icon: Users },
-    { label: 'KDR', value: values?.kdr.toFixed(2) ?? '—', note: 'kills / deaths', icon: Target },
-    { label: 'Очки', value: values?.points ?? '—', note: 'суммарно', icon: Target },
-    { label: 'Серверы', value: values?.servers.length ?? '—', note: 'с результатами', icon: Activity },
-    { label: 'Лучший ранг', value: bestRank ?? '—', note: 'среди серверов', icon: Target },
+    { label: 'ELO', value: war?.elo ?? '—', note: eloLevel > 0 ? `уровень ${eloLevel}` : 'War-рейтинг', icon: Trophy, level: eloLevel },
+    { label: 'Матчи', value: matchStats?.matches ?? war?.matches ?? '—', note: 'сыграно матчей', icon: Activity, level: 0 },
+    { label: 'K/D', value: hasMatchStats ? (deaths > 0 ? (kills / deaths).toFixed(2) : kills.toFixed(2)) : values?.kdr.toFixed(2) ?? '—', note: 'убийства / смерти', icon: Target, level: 0 },
+    { label: 'HS%', value: hasMatchStats && kills > 0 ? `${Math.round(headshots / kills * 100)}%` : '—', note: 'хедшоты от убийств', icon: Target, level: 0 },
+    { label: 'ADR', value: hasMatchStats && rounds > 0 ? (totals.damage / rounds).toFixed(1) : '—', note: 'средний урон за раунд', icon: Activity, level: 0 },
+    { label: 'AVG', value: war?.avg_kills_per_match ?? '—', note: 'убийств за War-матч', icon: Activity, level: 0 },
   ]
 })
-const mapTotals = computed(() => (profile.value?.mapWinRates ?? []).reduce((totals, map) => {
-  totals.matches += map.matches
-  totals.wins += map.wins
-  return totals
-}, { matches: 0, wins: 0 }))
+const matchActivityWeeks = computed(() => {
+  const days = profile.value?.matchActivity?.days ?? []
+  if (!days.length) return []
+
+  const firstDate = new Date(`${days[0].date}T00:00:00Z`)
+  const leadingCells = (firstDate.getUTCDay() + 6) % 7
+  const cells: { date: string; count: number }[] = [
+    ...Array.from({ length: leadingCells }, () => ({ date: '', count: 0 })),
+    ...days,
+  ]
+  while (cells.length % 7 !== 0) cells.push({ date: '', count: 0 })
+
+  const monthLabel = new Intl.DateTimeFormat('ru', { month: 'short', timeZone: 'UTC' })
+  return Array.from({ length: cells.length / 7 }, (_, index) => {
+    const weekDays = cells.slice(index * 7, index * 7 + 7)
+    const firstOfMonth = weekDays.find(day => day.date.endsWith('-01'))
+    return {
+      days: weekDays,
+      month: firstOfMonth ? monthLabel.format(new Date(`${firstOfMonth.date}T00:00:00Z`)).replace('.', '') : '',
+    }
+  })
+})
+const mobileMatchActivityWeeks = computed(() => {
+  const weeks = matchActivityWeeks.value.slice(-18).map(week => ({ ...week, days: [...week.days] }))
+  if (weeks.length && !weeks[0].month) {
+    const firstVisibleDay = weeks[0].days.find(day => day.date)
+    if (firstVisibleDay) {
+      weeks[0].month = new Intl.DateTimeFormat('ru', { month: 'short', timeZone: 'UTC' })
+        .format(new Date(`${firstVisibleDay.date}T00:00:00Z`)).replace('.', '')
+    }
+  }
+  return weeks
+})
+const mobileMatchActivityTotal = computed(() => mobileMatchActivityWeeks.value
+  .flatMap(week => week.days)
+  .reduce((total, day) => total + day.count, 0))
+
+function activityLevel(count: number) {
+  if (count <= 0) return 'level-0'
+  if (count === 1) return 'level-1'
+  if (count <= 3) return 'level-2'
+  if (count <= 5) return 'level-3'
+  return 'level-4'
+}
+
+function activityDayTitle(day: { date: string; count: number }) {
+  if (!day.date) return ''
+  const date = new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${day.date}T00:00:00Z`))
+  return `${date} · матчей: ${day.count}`
+}
+
 const detailedStats = computed(() => {
-  const values = profile.value?.stats
-  const { matches, wins } = mapTotals.value
-  return [
-    { label: 'KDR', value: values?.kdr.toFixed(2) ?? '—', note: 'По статистике серверов' },
-    { label: 'Winrate', value: matches ? `${Math.round(wins / matches * 100)}%` : '—', note: matches ? `${wins} побед из ${matches} матчей` : 'Нет данных по матчам' },
-    { label: 'ADR', value: '—', note: 'Нет матчевой статистики' },
-    { label: 'HS%', value: '—', note: 'Нет матчевой статистики' },
-    { label: 'Матчи', value: matches || '—', note: matches ? 'По доступным картам' : 'Нет данных по матчам' },
-    { label: 'Убийства', value: values?.kills ?? '—', note: 'На подключённых серверах' },
-    { label: 'Смерти', value: values?.deaths ?? '—', note: 'На подключённых серверах' },
-    { label: 'Очки', value: values?.points ?? '—', note: 'На подключённых серверах' },
-    { label: 'Частое оружие', value: '—', note: 'Нет данных по оружию' },
+  const totals = profile.value?.donutStats?.totals ?? {}
+  const matches = profile.value?.donutStats?.matches ?? 0
+  const war = profile.value?.donutWarProfile
+  const derived = profile.value?.donutStats?.derived ?? {}
+  const category = profile.value?.donutStats?.categoryScores ?? {}
+  const value = (key: string) => totals[key] ?? 0
+  const derivedValue = (key: string) => derived[key] ?? 0
+  const rate = (count: number, denominator: number) => denominator > 0 ? `${(count / denominator * 100).toFixed(1)}%` : '—'
+  const rounds = value('rounds')
+  const kills = value('kills')
+  const deaths = value('deaths')
+  const openingTime = value('openingTimeSamples') > 0 ? `${(value('openingTimeTotalMs') / value('openingTimeSamples') / 1000).toFixed(2)} с` : '—'
+  const rows: [string, string, string][] = [
+    ['Убийства', 'kills', 'Суммарно за сохранённые матчи'], ['Смерти', 'deaths', 'Суммарно за сохранённые матчи'],
+    ['Ассисты', 'assists', 'Суммарно за сохранённые матчи'], ['Хедшоты', 'headshots', 'Убийства в голову'],
+    ['K/D', '', 'Убийства / смерти'], ['HS%', '', 'Доля убийств в голову'], ['ADR', '', 'Средний урон за раунд'], ['DPR', '', 'Смерти за раунд'],
+    ['Урон', 'damage', 'Нанесённый урон'], ['Полученный урон', 'damageTaken', 'Урон, полученный от противников'],
+    ['Раунды', 'rounds', 'Завершённые раунды участия'], ['Раунды с убийством', 'roundsWithKill', 'Хотя бы одно убийство'],
+    ['Раунды с убийством %', '', 'Доля раундов с фрагом'], ['KAST', '', 'Убийство, ассист, выживание или размен'],
+    ['Убийства в выигранных раундах', 'killsInWonRounds', 'Фраги в победных раундах'],
+    ['Убийств за победный раунд', '', 'Среднее число фрагов в выигранных раундах'],
+    ['Убийства в пережитых раундах', 'killsInSurvivedRounds', 'Фраги в раундах, где игрок выжил'],
+    ['Вклад в победу раунда', 'roundWinContributionRounds', 'Раунды с личным вкладом'], ['Доля round win shares', '', 'Доля раундов побед команды с личным вкладом'],
+    ['Мультикиллы', 'multikills', 'Раунды минимум с двумя убийствами'],
+    ['Раунды с мультикиллом %', '', 'Доля раундов с двумя или более фрагами'],
+    ['Трипл-киллы', 'tripleKills', 'Раунды с тремя убийствами'], ['Квадро-киллы', 'quadKills', 'Раунды с четырьмя убийствами'], ['Эйсы', 'aceKills', 'Раунды с пятью и более убийствами'],
+    ['Победы в раундах', 'roundsWon', 'Раунды, выигранные командой'], ['Поражения в раундах', 'roundsLost', 'Раунды, проигранные командой'],
+    ['Entry попытки', 'openingAttempts', 'Первые дуэли раунда'], ['Entry-фраги', 'openingKills', 'Победы в первых дуэлях'],
+    ['Entry смерти', 'openingDeaths', 'Поражения в первых дуэлях'], ['Entry смерть разменяна', 'openingDeathsTraded', 'Первые смерти, за которые команда отомстила'],
+    ['Успех первых дуэлей', '', 'Доля выигранных первых дуэлей'], ['Среднее время первой дуэли', '', 'Время от начала раунда'],
+    ['Размен первых смертей %', '', 'Доля первых смертей, за которые отомстила команда'],
+    ['Замеры времени первых дуэлей', 'openingTimeSamples', 'Количество измерений'],
+    ['Победы в клатчах', 'clutchWins', 'Выигранные ситуации 1vX'], ['Попытки клатча', 'clutchAttempts', 'Все ситуации 1vX'],
+    ['Успех клатчей', '', 'Доля выигранных ситуаций 1vX'],
+    ['Клатч-попыток на 24 раунда', '', 'Частота clutch-ситуаций'],
+    ['Последний живой', 'lastAliveRounds', 'Раунды, где игрок остался последним'], ['Постплент раунды', 'postPlantRounds', 'Раунды после установки бомбы'],
+    ['Выживания после установки', 'alivePostPlantRounds', 'Выжил в постпленте'],
+    ['Раунды со снайперской винтовкой', 'roundsWithSniper', 'Любая снайперская винтовка'], ['Раунды с AWP', 'roundsWithAWP', 'Раунды с AWP'],
+    ['Убийства со снайперской винтовки', 'sniperKills', 'Все снайперские винтовки'], ['Убийства с AWP', 'awpKills', 'Фраги из AWP'],
+    ['Снайперские убийства %', '', 'Доля от всех фрагов'], ['Убийства с AWP %', '', 'Доля от всех фрагов'],
+    ['Выстрелы', 'weaponAttacks', 'За все завершённые матчи'], ['Выстрелы за раунд', '', 'Среднее значение'], ['Время жизни за раунд', '', 'Среднее число секунд'],
+    ['Дымовые гранаты', 'smokesThrown', 'Брошено'], ['Ослепляющие гранаты', 'flashesThrown', 'Брошено'],
+    ['Зажигательные гранаты', 'molotovsThrown', 'Брошено'], ['Осколочные гранаты', 'heGrenadesThrown', 'Брошено'],
+    ['Дымовые за раунд', '', 'Среднее значение'], ['Ослепляющие за раунд', '', 'Среднее значение'],
+    ['Зажигательные за раунд', '', 'Среднее значение'], ['Осколочные за раунд', '', 'Среднее значение'],
+    ['Смерти, доступные для размена', 'tradeableDeaths', 'Погиб, оставив живого тиммейта'], ['Разменянные смерти', 'deathsTraded', 'Смерти, за которые команда отомстила'],
+    ['Trade-фраги', 'tradeKills', 'Убийства в ответ на смерть тиммейта'], ['Возможности размена', 'tradeOpportunities', 'Ситуации для размена'],
+    ['Tradeable смерти за раунд', '', 'Смерти с возможностью размена'], ['Разменянные смерти %', '', 'От tradeable-смертей'],
+    ['Возможности размена за раунд', '', 'Частота ситуаций для trade'], ['Отменённые размены за раунд', '', 'Где размена не произошло'],
+    ['Trade-фраги %', '', 'Доля trade-убийств от всех фрагов'],
+    ['Отменённые размены', 'tradeDenials', 'Возможности, где размена не произошло'], ['Bait-ассисты', 'baitAssists', 'Ассисты после урона тиммейта'],
+    ['Bait-ассисты за раунд', '', 'Частота поддержки тиммейта'], ['Bait-фраги %', '', 'От всех убийств'], ['Assisted kills %', '', 'Фраги с уроном тиммейта'],
+    ['Bait-фраги', 'baitKills', 'Фраги после недавнего урона тиммейта'], ['Assisted kills', 'killsAssisted', 'Убийства с уроном тиммейта'],
+    ['Время жизни', 'timeAliveSeconds', 'Секунды в раундах'], ['Убийства в пережитых раундах за раунд', '', 'Perfect kills per round'],
+    ['Разница убийств за раунд', '', 'K − D на раунд'], ['Разница убийств за 24 раунда', '', 'K − D в пересчёте на 24 раунда'],
+    ['Чистый урон за раунд', '', 'Нанесённый минус полученный'], ['Раунды с убийством %', '', 'Доля раундов с фрагом'],
+    ['Последний живой %', '', 'Доля раундов'], ['Выживание после установки %', '', 'Успешность постплента'],
+    ['Матчи всего', '', 'Матчи с сохранённой статистикой'], ['Ранг первых дуэлей', '', 'Место среди игроков своей команды'],
+    ['Последний ELO', '', 'Срез последнего завершённого матча'], ['Последний уровень', '', 'Уровень в последнем матче'],
+    ['Матчи профиля', '', 'Накопительный счётчик плагина'], ['Матчи War', '', 'Накопительный счётчик плагина'],
+    ['Убийства профиля', '', 'Накопительный счётчик плагина'],
+    ['War ELO', '', 'Рейтинг за завершённые War-матчи'], ['War уровень', '', 'Уровень рейтинга'],
+    ['War победы / поражения', '', 'Результаты War-матчей'], ['War среднее убийств', '', 'За завершённый матч'],
+    ['War убийства / смерти', '', 'Накопительный War-профиль'], ['War хедшоты', '', 'Накопительный War-профиль'],
+    ['War ассисты', '', 'Накопительный War-профиль'], ['War урон', '', 'Накопительный War-профиль'],
+    ['War раунды', '', 'Накопительный War-профиль'], ['War KAST раунды', '', 'Накопительный War-профиль'],
+    ['War мультикиллы', '', 'Накопительный War-профиль'], ['War победы в клатчах', '', 'Накопительный War-профиль'],
+    ['War попытки клатча', '', 'Накопительный War-профиль'],
+    ['Оценка Firepower', '', 'Модель DonutStats · от 0 до 100'], ['Оценка Entrying', '', 'Модель DonutStats · от 0 до 100'],
+    ['Оценка Trading', '', 'Модель DonutStats · от 0 до 100'], ['Оценка Opening', '', 'Модель DonutStats · от 0 до 100'],
+    ['Оценка Closing', '', 'Модель DonutStats · от 0 до 100'], ['Оценка Sniping', '', 'Модель DonutStats · от 0 до 100'],
+    ['Оценка Utility', '', 'Модель DonutStats · от 0 до 100'],
   ]
+
+  return rows.map(([label, field, note]) => {
+    let display: string | number = field ? value(field) : '—'
+    if (label === 'K/D') display = deaths > 0 ? (kills / deaths).toFixed(2) : kills.toFixed(2)
+    else if (label === 'HS%') display = rate(value('headshots'), kills)
+    else if (label === 'ADR') display = rounds > 0 ? (value('damage') / rounds).toFixed(1) : '—'
+    else if (label === 'DPR') display = derivedValue('dpr').toFixed(2)
+    else if (label === 'Раунды с убийством %') display = rate(value('roundsWithKill'), rounds)
+    else if (label === 'KAST') display = rate(value('kastRounds'), rounds)
+    else if (label === 'Убийств за победный раунд') display = derivedValue('killsPerRoundWin').toFixed(2)
+    else if (label === 'Доля round win shares') display = `${derivedValue('roundWinSharesPercent').toFixed(1)}%`
+    else if (label === 'Раунды с мультикиллом %') display = `${derivedValue('multikillRoundsPercent').toFixed(1)}%`
+    else if (label === 'Успех первых дуэлей') display = rate(value('openingKills'), value('openingAttempts'))
+    else if (label === 'Среднее время первой дуэли') display = openingTime
+    else if (label === 'Размен первых смертей %') display = `${derivedValue('openingTradePercent').toFixed(1)}%`
+    else if (label === 'Успех клатчей') display = rate(value('clutchWins'), value('clutchAttempts'))
+    else if (label === 'Клатч-попыток на 24 раунда') display = derivedValue('clutchesPer24Rounds').toFixed(2)
+    else if (label === 'Tradeable смерти за раунд') display = derivedValue('tradeableDeathsPerRound').toFixed(2)
+    else if (label === 'Разменянные смерти %') display = `${derivedValue('deathsTradedPercent').toFixed(1)}%`
+    else if (label === 'Возможности размена за раунд') display = derivedValue('tradeOpportunitiesPerRound').toFixed(2)
+    else if (label === 'Отменённые размены за раунд') display = derivedValue('tradeDenialsPerRound').toFixed(2)
+    else if (label === 'Trade-фраги %') display = `${derivedValue('tradeKillsPercent').toFixed(1)}%`
+    else if (label === 'Bait-ассисты за раунд') display = derivedValue('baitAssistsPerRound').toFixed(2)
+    else if (label === 'Bait-фраги %') display = `${derivedValue('baitKillsPercent').toFixed(1)}%`
+    else if (label === 'Assisted kills %') display = `${derivedValue('assistedKillsPercent').toFixed(1)}%`
+    else if (label === 'Снайперские убийства %') display = `${derivedValue('sniperKillPercent').toFixed(1)}%`
+    else if (label === 'Убийства с AWP %') display = `${derivedValue('awpKillPercent').toFixed(1)}%`
+    else if (label === 'Выстрелы за раунд') display = derivedValue('weaponAttacksPerRound').toFixed(1)
+    else if (label === 'Время жизни за раунд') display = `${derivedValue('timeAlivePerRound').toFixed(1)} с`
+    else if (label === 'Дымовые за раунд') display = derivedValue('smokesPerRound').toFixed(2)
+    else if (label === 'Ослепляющие за раунд') display = derivedValue('flashesPerRound').toFixed(2)
+    else if (label === 'Зажигательные за раунд') display = derivedValue('molotovsPerRound').toFixed(2)
+    else if (label === 'Осколочные за раунд') display = derivedValue('heGrenadesPerRound').toFixed(2)
+    else if (label === 'Убийства в пережитых раундах за раунд') display = derivedValue('perfectKillsPerRound').toFixed(2)
+    else if (label === 'Разница убийств за раунд') display = derivedValue('netKillsPerRound').toFixed(2)
+    else if (label === 'Разница убийств за 24 раунда') display = derivedValue('netKillsPer24Rounds').toFixed(2)
+    else if (label === 'Чистый урон за раунд') display = derivedValue('netDamagePerRound').toFixed(1)
+    else if (label === 'Последний живой %') display = `${derivedValue('lastAlivePercent').toFixed(1)}%`
+    else if (label === 'Выживание после установки %') display = `${derivedValue('postPlantSurvivalPercent').toFixed(1)}%`
+    else if (label === 'Ранг первых дуэлей') display = profile.value?.donutStats?.latest.firstDuelRank ?? '—'
+    else if (label.startsWith('Оценка ')) display = category[label.slice('Оценка '.length)] ?? '—'
+    else if (label === 'Последний ELO') display = profile.value?.donutStats?.latest.elo ?? '—'
+    else if (label === 'Последний уровень') display = profile.value?.donutStats?.latest.level ?? '—'
+    else if (label === 'Матчи профиля') display = profile.value?.donutStats?.latest.profileMatches ?? '—'
+    else if (label === 'Матчи War') display = profile.value?.donutStats?.latest.warMatches ?? '—'
+    else if (label === 'Убийства профиля') display = profile.value?.donutStats?.latest.profileKills ?? '—'
+    else if (label === 'Матчи всего') display = matches
+    else if (label === 'War ELO') display = war?.elo ?? '—'
+    else if (label === 'War уровень') display = war?.level ?? '—'
+    else if (label === 'War победы / поражения') display = war ? `${war.wins ?? 0} / ${war.losses ?? 0}` : '—'
+    else if (label === 'War среднее убийств') display = war?.avg_kills_per_match ?? '—'
+    else if (label === 'War убийства / смерти') display = war ? `${war.kills ?? 0} / ${war.deaths ?? 0}` : '—'
+    else if (label === 'War хедшоты') display = war?.headshots ?? '—'
+    else if (label === 'War ассисты') display = war?.assists ?? '—'
+    else if (label === 'War урон') display = war?.damage ?? '—'
+    else if (label === 'War раунды') display = war?.rounds ?? '—'
+    else if (label === 'War KAST раунды') display = war?.kast_rounds ?? '—'
+    else if (label === 'War мультикиллы') display = war?.multikills ?? '—'
+    else if (label === 'War победы в клатчах') display = war?.clutch_wins ?? '—'
+    else if (label === 'War попытки клатча') display = war?.clutch_attempts ?? '—'
+    if (field === 'timeAliveSeconds' && typeof display === 'number') display = display.toFixed(1)
+    return { label, value: display, note }
+  })
 })
+const statisticsHighlights = computed(() => ['K/D', 'HS%', 'ADR', 'AVG', 'DPR', 'KAST'].map(label => {
+  const summary = profile.value?.donutStats
+  const hasRounds = (summary?.totals.rounds ?? 0) > 0
+  if (label === 'DPR') return { label, value: hasRounds ? (summary?.derived.dpr ?? 0).toFixed(2) : '—', note: 'смертей за раунд' }
+  if (label === 'KAST') return { label, value: hasRounds ? `${(summary?.derived.kastPercent ?? 0).toFixed(1)}%` : '—', note: 'убийство, ассист, выживание или размен' }
+  const stat = stats.value.find(item => item.label === label)
+  return { label, value: stat?.value ?? '—', note: stat?.note ?? '' }
+}))
+const levelProgress = computed(() => {
+  const elo = profile.value?.donutWarProfile?.elo ?? 0
+  const level = profile.value?.donutWarProfile?.level ?? 0
+  const levels = [
+    { level: 1, start: 100, next: 501 }, { level: 2, start: 501, next: 751 },
+    { level: 3, start: 751, next: 901 }, { level: 4, start: 901, next: 1051 },
+    { level: 5, start: 1051, next: 1201 }, { level: 6, start: 1201, next: 1351 },
+    { level: 7, start: 1351, next: 1531 }, { level: 8, start: 1531, next: 1751 },
+    { level: 9, start: 1751, next: 2001 }, { level: 10, start: 2001, next: null },
+  ]
+  const current = levels.find(item => item.level === level)
+  if (!current) return { percent: Math.max(0, Math.min(100, elo)), next: 100, remaining: Math.max(0, 100 - elo), maxed: false }
+  if (current.next === null) return { percent: 100, next: null, remaining: 0, maxed: true }
+  return {
+    percent: Math.max(0, Math.min(100, (elo - current.start) / (current.next - current.start) * 100)),
+    next: current.next,
+    remaining: Math.max(0, current.next - elo),
+    maxed: false,
+  }
+})
+const statGroupDefinitions = [
+  { title: 'Боевая эффективность', code: '01 / COMBAT', labels: ['Убийства', 'Смерти', 'Ассисты', 'Хедшоты', 'K/D', 'HS%', 'ADR', 'DPR', 'Урон', 'Полученный урон', 'Разница убийств за раунд', 'Разница убийств за 24 раунда', 'Чистый урон за раунд'] },
+  { title: 'Влияние на раунд', code: '02 / ROUND IMPACT', labels: ['Раунды', 'Раунды с убийством', 'Раунды с убийством %', 'KAST', 'Убийства в выигранных раундах', 'Убийств за победный раунд', 'Убийства в пережитых раундах', 'Убийства в пережитых раундах за раунд', 'Вклад в победу раунда', 'Победы в раундах', 'Поражения в раундах', 'Последний живой', 'Последний живой %', 'Постплент раунды', 'Выживания после установки', 'Выживание после установки %', 'Мультикиллы', 'Раунды с мультикиллом %', 'Трипл-киллы', 'Квадро-киллы', 'Эйсы'] },
+  { title: 'Первые дуэли', code: '03 / ENTRY', labels: ['Entry попытки', 'Entry-фраги', 'Entry смерти', 'Entry смерть разменяна', 'Успех первых дуэлей', 'Размен первых смертей %', 'Среднее время первой дуэли', 'Замеры времени первых дуэлей', 'Ранг первых дуэлей'] },
+  { title: 'Клатчи', code: '04 / CLUTCH', labels: ['Победы в клатчах', 'Попытки клатча', 'Успех клатчей', 'Клатч-попыток на 24 раунда'] },
+  { title: 'Размены и поддержка', code: '05 / TRADING', labels: ['Смерти, доступные для размена', 'Tradeable смерти за раунд', 'Разменянные смерти', 'Разменянные смерти %', 'Trade-фраги', 'Trade-фраги %', 'Возможности размена', 'Возможности размена за раунд', 'Отменённые размены', 'Отменённые размены за раунд', 'Bait-ассисты', 'Bait-ассисты за раунд', 'Bait-фраги', 'Bait-фраги %', 'Assisted kills', 'Assisted kills %'] },
+  { title: 'Оружие и utility', code: '06 / EQUIPMENT', labels: ['Раунды со снайперской винтовкой', 'Раунды с AWP', 'Убийства со снайперской винтовки', 'Снайперские убийства %', 'Убийства с AWP', 'Убийства с AWP %', 'Выстрелы', 'Выстрелы за раунд', 'Дымовые гранаты', 'Дымовые за раунд', 'Ослепляющие гранаты', 'Ослепляющие за раунд', 'Зажигательные гранаты', 'Зажигательные за раунд', 'Осколочные гранаты', 'Осколочные за раунд', 'Время жизни', 'Время жизни за раунд'] },
+  { title: 'Рейтинг и карьера', code: '07 / CAREER', labels: ['Матчи всего', 'Последний ELO', 'Последний уровень', 'Матчи профиля', 'Матчи War', 'Убийства профиля', 'War ELO', 'War уровень', 'War победы / поражения', 'War среднее убийств', 'War убийства / смерти', 'War хедшоты', 'War ассисты', 'War урон', 'War раунды', 'War KAST раунды', 'War мультикиллы', 'War победы в клатчах', 'War попытки клатча'] },
+  { title: 'Категории DonutStats', code: '08 / PLAYER MODEL', labels: ['Оценка Firepower', 'Оценка Entrying', 'Оценка Trading', 'Оценка Opening', 'Оценка Closing', 'Оценка Sniping', 'Оценка Utility'] },
+] as const
+const detailedStatGroups = computed(() => statGroupDefinitions.map(group => ({
+  ...group,
+  stats: detailedStats.value.filter(stat => (group.labels as readonly string[]).includes(stat.label)),
+})))
+const visibleDetailedStatGroups = computed(() => activeStatsGroup.value === 'all'
+  ? detailedStatGroups.value
+  : detailedStatGroups.value.filter(group => group.code === activeStatsGroup.value))
+const formMatches = computed(() => {
+  const matches = profile.value?.donutStats?.form ?? []
+  return matches.filter(match => typeof match.elo === 'number').slice(-formRange.value)
+})
+const formChart = computed(() => {
+  const points = formMatches.value.map(match => ({ ...match, value: match.elo as number }))
+  if (!points.length) return []
+  const min = Math.min(...points.map(point => point.value))
+  const max = Math.max(...points.map(point => point.value))
+  const padding = Math.max(20, (max - min) * .2)
+  return points.map(point => ({ ...point, height: (point.value - min + padding) / (max - min + padding * 2) * 100 }))
+})
+const eloChange = computed(() => {
+  const points = formChart.value
+  return points.length > 1 ? points[points.length - 1].value - points[0].value : null
+})
+const selectedFormMatch = computed(() => formChart.value.find(match => match.id === selectedFormMatchId.value) ?? formChart.value.at(-1) ?? null)
+const formPlot = computed(() => {
+  const points = formChart.value.map((point, index) => `${formChart.value.length === 1 ? 500 : index / (formChart.value.length - 1) * 1000},${160 - point.height * 1.4}`)
+  return { line: points.join(' '), area: `0,180 ${points.join(' ')} 1000,180` }
+})
+function formMetricValue(value: number) {
+  return `${Math.round(value)} ELO`
+}
+const statCategoryCards = computed(() => {
+  const scores = profile.value?.donutStats?.categoryScores ?? {}
+  const entries = [
+    { key: 'Firepower', label: 'Firepower', group: '01 / COMBAT', hint: 'Урон и дуэли' },
+    { key: 'Entrying', label: 'Entrying', group: '03 / ENTRY', hint: 'Первые дуэли' },
+    { key: 'Trading', label: 'Trading', group: '05 / TRADING', hint: 'Размены' },
+    { key: 'Opening', label: 'Opening', group: '03 / ENTRY', hint: 'Начало раунда' },
+    { key: 'Closing', label: 'Closing', group: '02 / ROUND IMPACT', hint: 'Завершение раунда' },
+    { key: 'Sniping', label: 'Sniping', group: '06 / EQUIPMENT', hint: 'Снайперские винтовки' },
+    { key: 'Utility', label: 'Utility', group: '06 / EQUIPMENT', hint: 'Гранаты и поддержка' },
+  ]
+  return entries.map(entry => ({ ...entry, score: scores[entry.key] ?? null })).filter(entry => entry.score !== null)
+})
+const selectedClutchStats = computed(() => {
+  const opponents = selectedClutchOpponents.value
+  const match = profile.value?.donutStats?.clutchesByX.find(item => item.opponents === opponents) ?? { opponents, wins: 0, attempts: 0 }
+  const war = profile.value?.donutWarProfile?.clutches_by_x?.find(item => item.opponents === opponents) ?? { opponents, wins: 0, attempts: 0 }
+  return { match, war }
+})
+
+function openStatsGroup(group: string) {
+  activeStatsGroup.value = group
+  activeStatsSection.value = 'advanced'
+  nextTick(() => { if (statsDetails.value) statsDetails.value.open = true })
+}
 
 const friendshipLabel = computed(() => {
   if (profile.value?.friendshipStatus === 'accepted') return 'Уже в друзьях'
@@ -464,7 +750,7 @@ watch(nickname, loadProfile, { immediate: true })
           <div class="profile-stat-grid">
             <article v-for="(stat, index) in stats" :key="stat.label" class="profile-stat-item">
               <div class="profile-stat-label"><component :is="stat.icon" :size="15" /><span>{{ stat.label }}</span><span class="profile-stat-index">0{{ index + 1 }}</span></div>
-              <strong>{{ stat.value }}</strong>
+              <strong :class="{ 'has-level-icon': stat.label === 'ELO' }"><img v-if="stat.label === 'ELO'" class="profile-stat-level-icon" :src="`/icons/levels/level-${stat.level}.svg`" :alt="stat.level > 0 ? `Уровень ${stat.level}` : 'Unknown'" />{{ stat.value }}</strong>
               <small>{{ stat.note }}</small>
             </article>
           </div>
@@ -523,6 +809,59 @@ watch(nickname, loadProfile, { immediate: true })
           </section>
         </div>
       </div>
+      <section v-if="profile.matchActivity" class="profile-match-activity" aria-labelledby="profile-match-activity-title">
+        <div class="profile-match-activity-heading">
+          <div class="profile-match-activity-title-wrap"><span class="profile-match-activity-icon"><Activity :size="15" /></span><div><h3 id="profile-match-activity-title">Активность матчей</h3><span class="profile-activity-year-label">За последние 365 дней</span><span class="profile-activity-mobile-label">За последние 4 месяца</span></div></div>
+          <strong class="profile-activity-year-label"><b>{{ profile.matchActivity.total }}</b><span>матчей</span></strong>
+          <strong class="profile-activity-mobile-label"><b>{{ mobileMatchActivityTotal }}</b><span>матчей</span></strong>
+        </div>
+        <div class="profile-activity-scroll" role="group" aria-label="Календарь активности матчей по дням">
+          <div class="profile-activity-calendar profile-activity-calendar-desktop">
+            <div class="profile-activity-months" aria-hidden="true">
+              <span v-for="(week, weekIndex) in matchActivityWeeks" :key="`month-${weekIndex}`">{{ week.month }}</span>
+            </div>
+            <div class="profile-activity-body">
+              <div class="profile-activity-weekdays" aria-hidden="true"><span>Пн</span><span></span><span>Ср</span><span></span><span>Пт</span><span></span><span></span></div>
+              <div class="profile-activity-weeks">
+                <div v-for="(week, weekIndex) in matchActivityWeeks" :key="`week-${weekIndex}`" class="profile-activity-week">
+                  <span
+                    v-for="(day, dayIndex) in week.days"
+                    :key="day.date || `blank-${weekIndex}-${dayIndex}`"
+                    class="profile-activity-day"
+                    :class="activityLevel(day.count)"
+                    :title="activityDayTitle(day)"
+                    :aria-label="day.date ? activityDayTitle(day) : undefined"
+                    :aria-hidden="!day.date"
+                  ></span>
+                </div>
+              </div>
+            </div>
+            <div class="profile-activity-legend" aria-hidden="true"><span>Меньше</span><i class="level-0"></i><i class="level-1"></i><i class="level-2"></i><i class="level-3"></i><i class="level-4"></i><span>Больше</span></div>
+          </div>
+          <div class="profile-activity-calendar profile-activity-calendar-mobile">
+            <div class="profile-activity-months" aria-hidden="true">
+              <span v-for="(week, weekIndex) in mobileMatchActivityWeeks" :key="`mobile-month-${weekIndex}`">{{ week.month }}</span>
+            </div>
+            <div class="profile-activity-body">
+              <div class="profile-activity-weekdays" aria-hidden="true"><span>Пн</span><span></span><span>Ср</span><span></span><span>Пт</span><span></span><span></span></div>
+              <div class="profile-activity-weeks">
+                <div v-for="(week, weekIndex) in mobileMatchActivityWeeks" :key="`mobile-week-${weekIndex}`" class="profile-activity-week">
+                  <span
+                    v-for="(day, dayIndex) in week.days"
+                    :key="day.date || `mobile-blank-${weekIndex}-${dayIndex}`"
+                    class="profile-activity-day"
+                    :class="activityLevel(day.count)"
+                    :title="activityDayTitle(day)"
+                    :aria-label="day.date ? activityDayTitle(day) : undefined"
+                    :aria-hidden="!day.date"
+                  ></span>
+                </div>
+              </div>
+            </div>
+            <div class="profile-activity-legend" aria-hidden="true"><span>Меньше</span><i class="level-0"></i><i class="level-1"></i><i class="level-2"></i><i class="level-3"></i><i class="level-4"></i><span>Больше</span></div>
+          </div>
+        </div>
+      </section>
     </section>
 
     <section class="profile-section" aria-labelledby="profile-matches-title">
@@ -568,20 +907,134 @@ watch(nickname, loadProfile, { immediate: true })
       aria-labelledby="profile-tab-statistics"
       tabindex="0"
     >
-      <div class="section-heading">
-        <div><div class="section-kicker">PLAYER PERFORMANCE</div><h2>Подробная статистика</h2></div>
-        <span class="section-count">CS <span>STATS</span></span>
+      <div class="profile-statistics-header mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div><div class="section-kicker">PLAYER PERFORMANCE</div><h2 class="text-xl font-bold tracking-tight text-slate-100">Статистика игрока</h2><p class="mt-1 text-xs text-slate-400">Форма, игровые привычки и влияние на раунд</p></div>
+        <span class="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/70 px-3 py-1.5 text-[11px] font-medium text-slate-300"><Activity :size="13" class="text-amber-300" /> {{ profile.donutStats?.matches ?? 0 }} матчей учтено</span>
       </div>
-      <div class="profile-detail-grid">
-        <article v-for="stat in detailedStats" :key="stat.label" class="profile-detail-card">
-          <span class="profile-detail-label">{{ stat.label }}</span>
-          <strong>{{ stat.value }}</strong>
-          <small>{{ stat.note }}</small>
-        </article>
-      </div>
-      <p class="profile-data-note">ADR, HS% и популярное оружие появятся после подключения матчевой статистики.</p>
 
-      <section class="profile-section" aria-labelledby="profile-detail-maps-title">
+      <nav class="profile-stats-nav" role="group" aria-label="Раздел статистики игрока">
+        <button v-for="section in statsSections" :key="section.id" class="profile-stats-nav-button" :class="{ 'is-active': activeStatsSection === section.id }" type="button" :aria-pressed="activeStatsSection === section.id" @click="activeStatsSection = section.id"><component :is="section.icon" :size="14" /><span>{{ section.label }}</span></button>
+      </nav>
+
+      <div v-if="activeStatsSection === 'overview'" class="profile-statistics-summary grid grid-cols-1 gap-3 xl:grid-cols-[minmax(250px,0.9fr)_minmax(0,2fr)]">
+        <section class="profile-rating-card relative overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-950 p-5 text-white shadow-xl" aria-label="War рейтинг">
+          <div class="pointer-events-none absolute -right-12 -top-14 h-44 w-44 rounded-full bg-amber-400/10 blur-3xl"></div>
+          <div class="relative flex h-full flex-col justify-between gap-7">
+            <div class="flex items-start justify-between gap-3"><div><div class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Competitive rating</div><div class="mt-1 text-sm font-semibold text-slate-200">War ELO</div></div><span class="rounded-lg border border-amber-300/20 bg-amber-300/10 p-2 text-amber-200"><Trophy :size="17" /></span></div>
+            <div class="flex items-center gap-3">
+              <img class="h-14 w-14" :class="{ 'drop-shadow-[0_0_16px_rgba(251,191,36,0.25)]': profile.donutWarProfile?.elo != null }" :src="`/icons/levels/level-${profile.donutWarProfile?.elo != null ? profile.donutWarProfile.level ?? 0 : 0}.svg`" :alt="profile.donutWarProfile?.elo != null && profile.donutWarProfile.level ? `Уровень ${profile.donutWarProfile.level}` : 'Unknown'" />
+              <div><div class="font-mono text-4xl font-bold leading-none tracking-tight text-white">{{ profile.donutWarProfile?.elo ?? '—' }}</div><div class="mt-2 text-xs text-slate-400">{{ profile.donutWarProfile ? `Уровень ${profile.donutWarProfile.level || '—'} · ${profile.donutWarProfile.matches ?? 0} матчей` : 'Рейтинг появится после War-матчей' }}</div></div>
+            </div>
+            <div v-if="profile.donutWarProfile" class="space-y-2">
+              <div class="flex items-center justify-between text-[10px] font-medium text-slate-400"><span>{{ levelProgress.maxed ? 'Максимальный уровень' : `${levelProgress.remaining} ELO до следующего уровня` }}</span><span>{{ levelProgress.maxed ? 'MAX' : `ур. ${profile.donutWarProfile.level ?? 0} → ${Number(profile.donutWarProfile.level ?? 0) + 1}` }}</span></div>
+              <div class="h-1.5 overflow-hidden rounded-full bg-slate-800"><div class="h-full rounded-full bg-gradient-to-r from-amber-500 to-yellow-200 transition-[width] duration-700" :style="{ width: `${levelProgress.percent}%` }"></div></div>
+              <div class="flex justify-between font-mono text-[9px] text-slate-500"><span>{{ profile.donutWarProfile.elo ?? 0 }} ELO</span><span>{{ levelProgress.next ? `${levelProgress.next} ELO` : '2001+ ELO' }}</span></div>
+            </div>
+            <div v-else class="rounded-xl border border-dashed border-slate-700 px-3 py-2 text-[11px] leading-relaxed text-slate-400">Заверши первый матч War, чтобы получить ELO и уровень.</div>
+          </div>
+        </section>
+
+        <div class="profile-statistics-highlights grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <article v-for="(stat, index) in statisticsHighlights" :key="stat.label" class="profile-stat-highlight rounded-2xl border border-slate-700/70 bg-slate-900/75 p-4 shadow-sm transition-transform duration-200 hover:-translate-y-0.5">
+            <div class="flex items-center justify-between gap-2"><span class="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">{{ stat.label }}</span><span class="font-mono text-[9px] text-slate-600">0{{ index + 1 }}</span></div>
+            <strong class="mt-5 block font-mono text-2xl font-semibold tracking-tight text-slate-100">{{ stat.value }}</strong>
+            <small class="mt-1 block text-[10px] leading-relaxed text-slate-500">{{ stat.note }}</small>
+            <div class="mt-4 h-px bg-gradient-to-r from-amber-300/50 via-slate-700 to-transparent"></div>
+          </article>
+        </div>
+      </div>
+
+      <section v-if="activeStatsSection === 'overview' && profile.donutStats" class="profile-form-panel mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70 sm:p-5" aria-labelledby="profile-form-title">
+        <header class="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div><div class="font-mono text-[9px] font-bold tracking-[0.16em] text-amber-600 dark:text-amber-300">RATING HISTORY</div><h3 id="profile-form-title" class="mt-1 text-sm font-bold text-slate-800 dark:text-slate-100">История ELO</h3><p class="mt-1 text-[10px] text-slate-500 dark:text-slate-400">Сохранённый рейтинг после War-матчей</p></div>
+          <div class="profile-stats-controls">
+            <span class="profile-stats-mode-badge">Только War</span>
+            <div class="profile-stats-control-group" aria-label="Число записей рейтинга">
+              <button v-for="count in formRanges" :key="count" type="button" :aria-pressed="formRange === count" @click="formRange = count">{{ count }}</button>
+            </div>
+          </div>
+        </header>
+        <div v-if="eloChange !== null" class="mb-2 text-xs font-semibold" :class="eloChange >= 0 ? 'text-emerald-500' : 'text-rose-400'">{{ eloChange > 0 ? '+' : '' }}{{ eloChange }} ELO <span class="font-normal text-slate-500">за выбранный период</span></div>
+        <div v-if="formChart.length" class="profile-form-chart" role="group" aria-label="График изменения ELO">
+          <svg v-if="formChart.length > 1" class="profile-form-line" viewBox="0 0 1000 180" preserveAspectRatio="none" aria-hidden="true">
+            <defs><linearGradient id="profile-form-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="currentColor" stop-opacity=".22" /><stop offset="100%" stop-color="currentColor" stop-opacity="0" /></linearGradient></defs>
+            <polygon :points="formPlot.area" fill="url(#profile-form-fill)" />
+            <polyline :points="formPlot.line" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+          </svg>
+          <button v-for="(point, index) in formChart" :key="point.id" class="profile-form-point" :class="{ 'is-selected': selectedFormMatch?.id === point.id }" type="button" :title="`${point.map} · ${point.mode} · ${formMetricValue(point.value)}`" :aria-label="`${point.map}, ${point.mode}: ${formMetricValue(point.value)}`" @mouseenter="selectedFormMatchId = point.id" @focus="selectedFormMatchId = point.id" @click="selectedFormMatchId = point.id">
+            <span class="profile-form-bar" :style="{ height: `${point.height}%` }"></span>
+            <small v-if="formChart.length <= 10 || index % 5 === 0">{{ point.date.slice(5).split('-').reverse().join('.') }}</small>
+          </button>
+        </div>
+        <div v-if="selectedFormMatch" class="profile-form-selection"><strong>{{ selectedFormMatch.map }}</strong><span>{{ selectedFormMatch.date }} · {{ selectedFormMatch.mode }}</span><b>{{ formMetricValue(selectedFormMatch.value) }}</b></div>
+        <p v-else class="profile-stats-empty-note">История появится после War-матчей с сохранённым рейтингом ELO.</p>
+      </section>
+
+      <section v-if="activeStatsSection === 'overview' && statCategoryCards.length" class="mt-4" aria-label="Категории игры">
+        <div class="mb-3 flex items-end justify-between"><div><div class="section-kicker">PLAYER MODEL</div><h3 class="text-sm font-bold text-slate-100">Сильные стороны</h3></div><span class="text-[9px] text-slate-500">нажмите, чтобы открыть метрики</span></div>
+        <div class="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
+          <button v-for="category in statCategoryCards" :key="category.key" class="profile-category-card" type="button" @click="openStatsGroup(category.group)">
+            <span>{{ category.label }}</span><strong>{{ category.score }}<small>/100</small></strong><i><b :style="{ width: `${category.score}%` }"></b></i><small>{{ category.hint }}</small>
+          </button>
+        </div>
+      </section>
+
+      <section v-if="activeStatsSection === 'advanced' && profile.donutStats" class="mt-4">
+        <AdvancedPerformance :stats="profile.donutStats" />
+        <details ref="statsDetails" class="profile-stats-details"><summary><span>Все показатели</span><small>Открыть подробную статистику по категориям</small></summary>
+        <div class="profile-stat-group-filter" role="group" aria-label="Фильтр групп показателей">
+          <button type="button" :aria-pressed="activeStatsGroup === 'all'" :class="{ 'is-active': activeStatsGroup === 'all' }" @click="activeStatsGroup = 'all'">Все показатели</button>
+          <button v-for="group in detailedStatGroups" :key="group.code" type="button" :aria-pressed="activeStatsGroup === group.code" :class="{ 'is-active': activeStatsGroup === group.code }" @click="activeStatsGroup = group.code">{{ group.title }}</button>
+        </div>
+        <div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
+        <section v-for="group in visibleDetailedStatGroups" :key="group.code" class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70">
+          <header class="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-700/70">
+            <div><div class="font-mono text-[9px] font-bold tracking-[0.16em] text-amber-600 dark:text-amber-300">{{ group.code }}</div><h3 class="mt-1 text-sm font-bold text-slate-800 dark:text-slate-100">{{ group.title }}</h3></div>
+            <span class="rounded-lg bg-slate-100 p-2 text-slate-500 dark:bg-slate-800 dark:text-slate-300"><Target :size="15" /></span>
+          </header>
+          <div class="grid grid-cols-1 divide-y divide-slate-100 px-4 dark:divide-slate-800 sm:grid-cols-2 sm:divide-y-0 sm:gap-x-5">
+            <article v-for="stat in group.stats" :key="stat.label" class="flex min-h-[58px] items-center justify-between gap-3 border-b border-slate-100 py-2.5 last:border-0 dark:border-slate-800 sm:[&:nth-last-child(-n+2)]:border-0">
+              <div class="min-w-0"><div class="truncate text-[11px] font-medium text-slate-600 dark:text-slate-300">{{ stat.label }}</div><div class="mt-0.5 truncate text-[9px] text-slate-400 dark:text-slate-500">{{ stat.note }}</div></div>
+              <strong class="shrink-0 font-mono text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">{{ stat.value }}</strong>
+            </article>
+          </div>
+        </section>
+      </div>
+        </details>
+      </section>
+      <div v-if="activeStatsSection === 'advanced' && !profile.donutStats" class="profile-statistics-empty mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center dark:border-slate-700 dark:bg-slate-900/50">
+        <span class="mx-auto grid h-11 w-11 place-items-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-300/10 dark:text-amber-200"><Activity :size="19" /></span>
+        <div class="profile-empty-copy">
+        <h3 class="mt-3 text-sm font-bold text-slate-800 dark:text-slate-100">Матчевой статистики пока нет</h3>
+        <p class="mx-auto mt-1 max-w-md text-xs leading-relaxed text-slate-500 dark:text-slate-400">После завершения игр с подключённым DonutStats здесь появятся показатели по раундам, entry, разменам, оружию и utility.</p>
+        </div>
+      </div>
+
+      <PlayerWeapons v-if="activeStatsSection === 'weapons'" :catalog="profile.weaponCatalog ?? []" :stats="profile.donutStats?.weaponStats ?? null" />
+
+      <section v-if="activeStatsSection === 'clutches'" class="mt-4" aria-labelledby="profile-clutches-title">
+        <div class="mb-3 flex items-end justify-between gap-3"><div><div class="section-kicker">CLUTCH PERFORMANCE</div><h2 id="profile-clutches-title" class="text-lg font-bold tracking-tight text-slate-800 dark:text-slate-100">Клатчи 1vX</h2></div><span class="font-mono text-[10px] text-slate-400">WINS / ATTEMPTS</span></div>
+        <div v-if="profile.donutStats?.clutchesByX.some(item => item.attempts > 0)" class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          <button v-for="clutch in profile.donutStats.clutchesByX" :key="clutch.opponents" class="rounded-xl border p-3 text-left shadow-sm transition-colors" :class="selectedClutchOpponents === clutch.opponents ? 'border-amber-400 bg-amber-50 dark:border-amber-300/60 dark:bg-amber-300/10' : 'border-slate-200 bg-white dark:border-slate-700/70 dark:bg-slate-900/70'" type="button" :aria-pressed="selectedClutchOpponents === clutch.opponents" @click="selectedClutchOpponents = clutch.opponents">
+            <div class="flex items-center justify-between"><span class="font-mono text-xs font-bold text-slate-500 dark:text-slate-400">1v{{ clutch.opponents }}</span><span class="font-mono text-[10px] font-semibold text-amber-600 dark:text-amber-300">{{ clutch.attempts ? `${Math.round(clutch.wins / clutch.attempts * 100)}%` : '—' }}</span></div>
+            <strong class="mt-2 block font-mono text-xl font-semibold tabular-nums text-slate-900 dark:text-white">{{ clutch.wins }}<span class="mx-1 text-slate-300 dark:text-slate-600">/</span><span class="text-sm text-slate-500">{{ clutch.attempts }}</span></strong>
+            <div class="mt-2 h-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div class="h-full rounded-full bg-amber-400" :style="{ width: `${clutch.attempts ? clutch.wins / clutch.attempts * 100 : 0}%` }"></div></div>
+          </button>
+        </div>
+        <div v-else class="profile-stats-empty-note">Для этих матчей пока нет данных о клатчах.</div>
+        <article class="mt-3 grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70 sm:grid-cols-2">
+          <div><span class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Матчевые данные · 1v{{ selectedClutchOpponents }}</span><strong class="mt-2 block font-mono text-xl text-slate-900 dark:text-white">{{ selectedClutchStats.match.wins }} <small class="text-sm text-slate-400">побед из {{ selectedClutchStats.match.attempts }}</small></strong></div>
+          <div v-if="profile.donutWarProfile"><span class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">War-карьера · 1v{{ selectedClutchOpponents }}</span><strong class="mt-2 block font-mono text-xl text-slate-900 dark:text-white">{{ selectedClutchStats.war.wins }} <small class="text-sm text-slate-400">побед из {{ selectedClutchStats.war.attempts }}</small></strong></div>
+        </article>
+      </section>
+
+      <p v-if="activeStatsSection === 'advanced' && profile.donutStats" class="profile-data-note mt-4">Показатели собраны по завершённым матчам. K/D — убийства к смертям, HS% — доля убийств в голову, ADR — средний урон за раунд.</p>
+      <section v-if="activeStatsSection === 'overview' && !profile.donutStats" class="profile-statistics-empty mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center dark:border-slate-700 dark:bg-slate-900/50">
+        <span class="mx-auto grid h-11 w-11 place-items-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-300/10 dark:text-amber-200"><Activity :size="19" /></span>
+        <h3 class="mt-3 text-sm font-bold text-slate-800 dark:text-slate-100">Матчевой статистики пока нет</h3><p class="mx-auto mt-1 max-w-md text-xs text-slate-500 dark:text-slate-400">Она появится после завершения матчей с DonutStats.</p>
+      </section>
+
+      <section v-if="activeStatsSection === 'overview' && profile.mapWinRates.length" class="profile-section" aria-labelledby="profile-detail-maps-title">
         <div class="section-heading">
           <div><div class="section-kicker">MAP PERFORMANCE</div><h2 id="profile-detail-maps-title">Winrate по картам</h2></div>
           <span class="section-count">{{ profile.mapWinRates.length.toString().padStart(2, '0') }} <span>КАРТ</span></span>

@@ -68,6 +68,33 @@ export interface StatsPlayersPage {
   }
 }
 
+export interface DonutStatsLeaderboardPlayer {
+  avg: number | null
+  adr: number | null
+  kast: number | null
+  winrate: number | null
+  id: string
+  steamId: string
+  nickname: string
+  profileNickname: string | null
+  avatarUrl: string | null
+  elo: number
+  level: number
+  matches: number
+  wins: number
+  losses: number
+  kills: number
+  deaths: number
+  kdr: number
+  headshots: number
+  damage: number
+}
+
+export interface DonutStatsLeaderboardPage {
+  players: DonutStatsLeaderboardPlayer[]
+  pagination: { currentPage: number; lastPage: number; total: number }
+}
+
 export interface AuthUser {
   id: number
   email: string
@@ -229,9 +256,11 @@ export interface AdminSourceBansPage {
 }
 
 export interface MatchPlayer {
+  steamId?: string | null
   name: string
   kills: number | null
   deaths: number | null
+  donutStats: Record<string, unknown> | null
   account: {
     id: number
     nickname: string
@@ -324,9 +353,70 @@ export interface PlayerProfile {
   isAuthenticated: boolean
   friendshipStatus: 'pending' | 'incoming' | 'accepted' | null
   stats: ProfileStats | null
+  donutStats: DonutPlayerStatsSummary | null
+  donutWarProfile: WarPlayerProfile | null
+  matchActivity: { total: number; days: { date: string; count: number }[] } | null
   friends: FriendSummary[]
   recentMatches: GameMatch[]
   mapWinRates: MapWinRate[]
+  weaponCatalog: CssWeapon[]
+}
+
+export interface CssWeapon {
+  id: string
+  name: string
+  category: string
+}
+
+export interface WeaponUsageStats {
+  trackedMaps: number
+  trackedRounds: number
+  weapons: (CssWeapon & { shots: number; hits: number; damage: number; kills: number; headshots: number; rounds: number })[]
+}
+
+export interface WarPlayerProfile {
+  available: boolean
+  matches?: number
+  wins?: number
+  losses?: number
+  elo?: number
+  level?: number
+  avg_kills_per_match?: number
+  kills?: number
+  deaths?: number
+  headshots?: number
+  assists?: number
+  damage?: number
+  rounds?: number
+  kast_rounds?: number
+  multikills?: number
+  clutch_wins?: number
+  clutch_attempts?: number
+  clutches_by_x?: { opponents: number; wins: number; attempts: number }[]
+}
+
+export interface DonutPlayerStatsSummary {
+  weaponStats: WeaponUsageStats
+  matches: number
+  totals: Record<string, number>
+  latest: Record<string, number>
+  derived: Record<string, number>
+  categoryScores: Record<string, number | null>
+  clutchesByX: { opponents: number; wins: number; attempts: number }[]
+  form: {
+    id: number
+    elo: number | null
+    date: string
+    map: string
+    mode: 'War' | 'Mix'
+    kills: number
+    deaths: number
+    headshots: number
+    damage: number
+    rounds: number
+    kastRounds: number
+    assists: number
+  }[]
 }
 
 export type SocialPlatform = 'telegram' | 'instagram' | 'youtube' | 'twitch' | 'trovo' | 'boosty'
@@ -959,6 +1049,15 @@ export async function getStatsPlayers(page = 1, search = ''): Promise<StatsPlaye
     headers: { Accept: 'application/json' },
   })
   return readJson<StatsPlayersPage>(response)
+}
+
+export async function getDonutStatsPlayers(page = 1, search = ''): Promise<DonutStatsLeaderboardPage> {
+  const params = new URLSearchParams({ page: String(page) })
+  if (search.trim()) params.set('search', search.trim())
+  const response = await fetch(`${apiBaseUrl}/donutstats/players?${params.toString()}`, {
+    headers: { Accept: 'application/json' },
+  })
+  return readJson<DonutStatsLeaderboardPage>(response)
 }
 
 export async function getAdminStatisticsSource(): Promise<StatisticsSource> {

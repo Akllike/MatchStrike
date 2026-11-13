@@ -6,6 +6,7 @@ import Pusher from 'pusher-js'
 import { getGameMatch } from './api'
 import type { GameMatchDetails, MatchPlayer } from './api'
 import PageLoader from './components/PageLoader.vue'
+import { aggregateSeriesPlayers } from './seriesStatistics.mjs'
 import { matchMapImage } from './matchArtwork'
 import { formatMatchDuration } from './matchDuration'
 
@@ -41,20 +42,7 @@ const seriesIsLive = computed(() => Boolean(match.value && match.value.scoreType
 const resultTeams = computed(() => {
   if (!match.value) return []
   if (selectedStatsTab.value === 0) {
-    const totals = new Map<string, MatchPlayer & { side: string }>()
-    for (const map of match.value.seriesPlayerStats) {
-      for (const [side, players] of [['CT', map.playersCt], ['T', map.playersT]] as const) {
-        for (const player of players) {
-          const key = `${side}:${player.account?.id ?? player.name.toLocaleLowerCase()}`
-          const current = totals.get(key)
-          if (current) {
-            current.kills = (current.kills ?? 0) + (player.kills ?? 0)
-            current.deaths = (current.deaths ?? 0) + (player.deaths ?? 0)
-          } else totals.set(key, { ...player, side, kills: player.kills ?? 0, deaths: player.deaths ?? 0 })
-        }
-      }
-    }
-    return ['CT', 'T'].map(side => ({ side, name: side === 'CT' ? match.value!.teamA.name || 'Спецназ' : match.value!.teamB.name || 'Террористы', players: [...totals.values()].filter(player => player.side === side) }))
+    return aggregateSeriesPlayers(match.value.seriesPlayerStats, match.value.teamA.name, match.value.teamB.name)
   }
   const selected = match.value.seriesPlayerStats.find(item => item.mapIndex === selectedStatsTab.value)
   if (!selected) return []
@@ -77,18 +65,24 @@ function initials(name: string | null | undefined) {
 }
 
 function playerStat(player: MatchPlayer, field: 'kills' | 'deaths') {
+  const detailedValue = player.donutStats?.[field]
+  if (typeof detailedValue === 'number') return detailedValue
   return player[field] ?? '—'
 }
 
-function playerDifference(player: MatchPlayer) {
-  if (player.kills === null || player.deaths === null) return '—'
-  const difference = player.kills - player.deaths
-  return difference > 0 ? `+${difference}` : String(difference)
-}
-
-function playerRatio(player: MatchPlayer) {
-  if (player.kills === null || player.deaths === null || player.deaths === 0) return '—'
-  return (player.kills / player.deaths).toFixed(2)
+function playerDonutStat(player: MatchPlayer, field: 'headshots' | 'assists' | 'kd' | 'hsPercent' | 'adr' | 'kast' | 'damage' | 'entry' | 'triples' | 'quadros' | 'aces') {
+  const stats = player.donutStats
+  const rounds = Number(stats?.rounds ?? 0)
+  const kills = Number(stats?.kills ?? player.kills ?? 0)
+  const deaths = Number(stats?.deaths ?? player.deaths ?? 0)
+  if (field === 'kd') return deaths > 0 ? (kills / deaths).toFixed(2) : kills > 0 ? kills.toFixed(2) : '—'
+  if (field === 'hsPercent') return kills > 0 ? `${Math.round(Number(stats?.headshots ?? 0) / kills * 100)}%` : '—'
+  if (field === 'adr') return rounds > 0 ? (Number(stats?.damage ?? 0) / rounds).toFixed(1) : '—'
+  if (field === 'kast') return rounds > 0 ? `${Math.round(Number(stats?.kastRounds ?? 0) / rounds * 100)}%` : '—'
+  if (!stats) return '—'
+  const metricField = ({ entry: 'openingKills', triples: 'tripleKills', quadros: 'quadKills', aces: 'aceKills' } as const)[field as 'entry' | 'triples' | 'quadros' | 'aces'] ?? field
+  const value = stats[metricField]
+  return typeof value === 'number' ? value : '—'
 }
 
 function disconnect() {
@@ -268,20 +262,19 @@ onUnmounted(() => {
         <div class="match-results">
           <div class="match-results-scroll" role="region" aria-label="Результаты игроков" tabindex="0">
             <table class="match-results-table">
-              <thead><tr><th scope="col">Игрок</th><th scope="col">Сторона</th><th scope="col" title="Убийства">Убийства</th><th scope="col" title="Смерти">Смерти</th><th scope="col" title="Разница убийств и смертей">+ / −</th><th scope="col" title="Отношение убийств к смертям">K/D</th></tr></thead>
+              <thead><tr><th scope="col">Игрок</th><th scope="col" title="Убийства">Убийства</th><th scope="col" title="Смерти">Смерти</th><th scope="col" title="Ассисты">A</th><th scope="col" title="Количество хедшотов">HS</th><th scope="col" title="Kills / Deaths">K/D</th><th scope="col" title="Доля убийств в голову">HS%</th><th scope="col" title="Средний урон за раунд">ADR</th><th scope="col" title="Общий урон">Урон</th><th scope="col" title="Entry-фраги">Entry</th><th scope="col" title="Трипл-киллы">3K</th><th scope="col" title="Квадро-киллы">4K</th><th scope="col" title="Эйсы">Ace</th></tr></thead>
               <tbody v-for="team in (match.scoreType === 'maps' ? resultTeams : teams)" :key="team.side">
-                <tr class="match-results-team"><th colspan="6" scope="rowgroup"><span class="match-results-side" :class="`is-${team.side.toLowerCase()}`">{{ team.side }}</span><strong>{{ team.name }}</strong><small>Сторона {{ team.side }} · игроков: {{ team.players.length }}</small></th></tr>
+                <tr class="match-results-team"><th colspan="13" scope="rowgroup"><span class="match-results-side" :class="`is-${team.side.toLowerCase()}`">{{ team.side }}</span><strong>{{ team.name }}</strong><small>Сторона {{ team.side }} · игроков: {{ team.players.length }}</small></th></tr>
                 <tr v-for="(player, index) in team.players" :key="`${index}-${player.name}`">
                   <th scope="row"><span class="match-results-player"><img v-if="player.account?.avatarUrl" class="match-player-avatar" :src="player.account.avatarUrl" :alt="player.account.nickname" /><span v-else class="match-player-avatar">{{ initials(player.name) }}</span><span class="match-player-label"><RouterLink v-if="player.account" :to="player.account.profileUrl">{{ player.account.nickname }}</RouterLink><strong v-else>{{ player.name }}</strong><small v-if="player.account && player.account.nickname !== player.name">Игровой ник: {{ player.name }}</small></span></span></th>
-                  <td><span class="match-results-side" :class="`is-${team.side.toLowerCase()}`">{{ team.side }}</span></td>
-                  <td>{{ playerStat(player, 'kills') }}</td><td>{{ playerStat(player, 'deaths') }}</td><td>{{ playerDifference(player) }}</td><td>{{ playerRatio(player) }}</td>
+                  <td>{{ playerStat(player, 'kills') }}</td><td>{{ playerStat(player, 'deaths') }}</td><td>{{ playerDonutStat(player, 'assists') }}</td><td>{{ playerDonutStat(player, 'headshots') }}</td><td>{{ playerDonutStat(player, 'kd') }}</td><td>{{ playerDonutStat(player, 'hsPercent') }}</td><td>{{ playerDonutStat(player, 'adr') }}</td><td>{{ playerDonutStat(player, 'damage') }}</td><td>{{ playerDonutStat(player, 'entry') }}</td><td>{{ playerDonutStat(player, 'triples') }}</td><td>{{ playerDonutStat(player, 'quadros') }}</td><td>{{ playerDonutStat(player, 'aces') }}</td>
                 </tr>
-                <tr v-if="!team.players.length"><td colspan="6" class="match-results-empty">Данные об игроках этой стороны не получены.</td></tr>
+                <tr v-if="!team.players.length"><td colspan="13" class="match-results-empty">Данные об игроках этой стороны не получены.</td></tr>
               </tbody>
             </table>
           </div>
         </div>
-        <p class="match-section-note">{{ match.scoreType === 'maps' && selectedStatsTab === 0 ? 'Суммарные убийства и смерти по сохранённым картам серии.' : 'Статистика игроков на выбранной карте.' }} + / − — разница убийств и смертей; K/D — их отношение. При нуле смертей K/D не рассчитывается.</p>
+        <p class="match-section-note">{{ match.scoreType === 'maps' && selectedStatsTab === 0 ? 'Суммарные показатели по сохранённым картам серии.' : 'Статистика игроков на выбранной карте.' }} K/D — убийства к смертям; HS% — доля убийств в голову; ADR — средний урон за раунд. Для старых матчей часть полей может отсутствовать.</p>
         <p v-if="match.playersRetained" class="match-section-note">Показаны последние данные игроков, полученные перед завершением карты.</p>
       </section>
       <section v-else class="match-detail-section" aria-labelledby="match-players-title">
@@ -291,7 +284,7 @@ onUnmounted(() => {
           <article v-for="team in teams" :key="team.side" class="match-roster">
             <div class="match-roster-heading"><div><span class="match-roster-mark" :class="`is-${team.side.toLowerCase()}`"><Shield :size="16" /></span><div><strong>{{ team.name }}</strong><span>СТОРОНА {{ team.side }}</span></div></div><small>{{ team.players.length }} ИГРОКОВ</small></div>
             <div v-if="team.players.length" class="match-player-table">
-              <div class="match-player-head"><span>ИГРОК</span><span title="Убийства">K</span><span title="Смерти">D</span></div>
+              <div class="match-player-head"><span>ИГРОК</span><span title="Убийства">K</span><span title="Смерти">D</span><span title="Ассисты">A</span><span title="Хедшоты">HS</span><span title="Kills / Deaths">K/D</span><span title="Доля попаданий в голову">HS%</span><span title="Средний урон за раунд">ADR</span></div>
               <div v-for="(player, index) in team.players" :key="`${index}-${player.name}`" class="match-player-row">
                 <div class="match-player-identity">
                   <img v-if="player.account?.avatarUrl" class="match-player-avatar" :src="player.account.avatarUrl" :alt="player.account.nickname" />
@@ -304,6 +297,11 @@ onUnmounted(() => {
                 </div>
                 <span>{{ playerStat(player, 'kills') }}</span>
                 <span>{{ playerStat(player, 'deaths') }}</span>
+                <span>{{ playerDonutStat(player, 'assists') }}</span>
+                <span>{{ playerDonutStat(player, 'headshots') }}</span>
+                <span>{{ playerDonutStat(player, 'kd') }}</span>
+                <span>{{ playerDonutStat(player, 'hsPercent') }}</span>
+                <span>{{ playerDonutStat(player, 'adr') }}</span>
               </div>
             </div>
             <div v-else class="match-detail-empty">Данные об игроках не получены.</div>
