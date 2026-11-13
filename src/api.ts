@@ -166,6 +166,7 @@ export interface GameMatch {
   scoreType: 'maps' | 'rounds'
   roundTeams: [{ name?: string | null; score: number }, { name?: string | null; score: number }]
   updatedAt: string
+  durationSeconds?: number | null
   playerSide?: 'ct' | 't' | null
   playerResult?: 'win' | 'loss' | 'draw' | null
 }

@@ -6,6 +6,7 @@ import { getGameMatches } from './api'
 import type { GameMatch } from './api'
 import PageLoader from './components/PageLoader.vue'
 import { handleMapImageError, matchMapImage } from './matchArtwork'
+import { formatMatchDuration } from './matchDuration'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,6 +23,7 @@ let timer: ReturnType<typeof setInterval> | undefined
 let requestId = 0
 let pending = false
 const loadingMore = ref(false)
+let loadMoreArmed = true
 
 const matchGroups = computed(() => {
   const live = matches.value.filter(match => match.status === 'live')
@@ -39,7 +41,7 @@ const matchGroups = computed(() => {
 async function load(quiet = false, append = false) {
   if (pending) return
   const requestedMode = mode.value
-  const requestedPage = append ? page.value + 1 : page.value
+  const requestedPage = append ? page.value + 1 : quiet ? 1 : page.value
   if (append && requestedPage > lastPage.value) return
   const id = ++requestId
   pending = true
@@ -51,8 +53,21 @@ async function load(quiet = false, append = false) {
     if (id !== requestId || requestedMode !== mode.value) return
     connected.value = data.connected
     hasArchive.value = data.hasMatches
-    matches.value = append ? [...matches.value, ...data.matches] : data.matches
-    page.value = requestedPage
+    if (append) {
+      const existingIds = new Set(matches.value.map(match => match.id))
+      matches.value = [...matches.value, ...data.matches.filter(match => !existingIds.has(match.id))]
+      page.value = requestedPage
+    } else if (quiet) {
+      const refreshed = new Map(data.matches.map(match => [match.id, match]))
+      const existingIds = new Set(matches.value.map(match => match.id))
+      matches.value = [
+        ...data.matches.filter(match => !existingIds.has(match.id)),
+        ...matches.value.map(match => refreshed.get(match.id) ?? match),
+      ]
+    } else {
+      matches.value = data.matches
+      page.value = requestedPage
+    }
     total.value = data.pagination.total
     lastPage.value = data.pagination.lastPage
     error.value = ''
@@ -64,6 +79,10 @@ async function load(quiet = false, append = false) {
       pending = false
       loading.value = false
       loadingMore.value = false
+      if (append && document.documentElement.scrollHeight <= window.innerHeight + 500 && page.value < lastPage.value) {
+        loadMoreArmed = false
+        requestAnimationFrame(() => void load(true, true))
+      }
     }
   }
 }
@@ -78,7 +97,12 @@ function selectMode(value: 'War' | 'Mix') {
 }
 
 function onScroll() {
-  if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 700 && !pending && page.value < lastPage.value) void load(true, true)
+  const distanceToBottom = document.documentElement.scrollHeight - window.innerHeight - window.scrollY
+  if (distanceToBottom > 900) loadMoreArmed = true
+  if (loadMoreArmed && distanceToBottom <= 500 && !pending && page.value < lastPage.value) {
+    loadMoreArmed = false
+    void load(true, true)
+  }
 }
 
 function statusLabel(status: GameMatch['status']) {
@@ -90,6 +114,7 @@ watch(() => route.params.mode, () => {
   pending = false
   loadingMore.value = false
   matches.value = []
+  loadMoreArmed = true
   loading.value = true
   page.value = 1
   void load()
@@ -135,7 +160,7 @@ onUnmounted(() => { if (timer) clearInterval(timer); window.removeEventListener(
               <div class="donut-match-meta"><span>МАТЧ #{{ match.id }}</span><span class="donut-status" :class="`is-${match.status}`">{{ statusLabel(match.status) }}</span></div>
               <div class="donut-match-teams"><strong>{{ match.teamA.name || 'Команда CT' }}</strong><b>{{ match.teamA.score ?? '—' }} : {{ match.teamB.score ?? '—' }}</b><strong>{{ match.teamB.name || 'Команда T' }}</strong></div>
               <div class="donut-score-label">Счёт {{ match.scoreType === 'maps' ? 'по картам' : 'по раундам' }}</div>
-              <div class="donut-match-footer"><span>{{ match.mode }} · {{ match.format || (match.mode === 'Mix' ? 'Classic' : 'Формат не указан') }}</span><span>Сервер #{{ match.serverNumber }}{{ match.serverName ? ` · ${match.serverName}` : '' }}</span><span>{{ match.map }}</span><span>Длительность: —</span><span>Обновлено: {{ new Date(match.updatedAt).toLocaleString('ru-RU') }}</span></div>
+              <div class="donut-match-footer"><span>{{ match.mode }} · {{ match.format || (match.mode === 'Mix' ? 'Classic' : 'Формат не указан') }}</span><span>Сервер #{{ match.serverNumber }}{{ match.serverName ? ` · ${match.serverName}` : '' }}</span><span>{{ match.map }}</span><span>Длительность: {{ formatMatchDuration(match.durationSeconds) }}</span><span>Обновлено: {{ new Date(match.updatedAt).toLocaleString('ru-RU') }}</span></div>
             </RouterLink>
           </div>
         </section>

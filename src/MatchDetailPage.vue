@@ -7,6 +7,7 @@ import { getGameMatch } from './api'
 import type { GameMatchDetails, MatchPlayer } from './api'
 import PageLoader from './components/PageLoader.vue'
 import { matchMapImage } from './matchArtwork'
+import { formatMatchDuration } from './matchDuration'
 
 const route = useRoute()
 const match = ref<GameMatchDetails | null>(null)
@@ -216,7 +217,7 @@ onUnmounted(() => {
         </div>
         <div class="match-hero-bottom">
           <span><MapIcon :size="15" /><span><small>КАРТА</small><strong>{{ match.map }}</strong></span></span>
-          <span><Clock3 :size="15" /><span><small>ДЛИТЕЛЬНОСТЬ</small><strong>—</strong></span></span>
+          <span><Clock3 :size="15" /><span><small>ДЛИТЕЛЬНОСТЬ</small><strong>{{ formatMatchDuration(match.durationSeconds) }}</strong></span></span>
           <span><Server :size="15" /><span><small>СЕРВЕР</small><strong>#{{ match.serverNumber }}{{ match.serverName ? ` · ${match.serverName}` : '' }}</strong></span></span>
           <span><Crosshair :size="15" /><span><small>РАУНД</small><strong>{{ match.round ?? '—' }}</strong></span></span>
         </div>

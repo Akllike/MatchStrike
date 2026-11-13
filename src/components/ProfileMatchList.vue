@@ -3,6 +3,7 @@ import { Award, CalendarClock, ChevronRight, MapPin, Server } from '@lucide/vue'
 import { RouterLink } from 'vue-router'
 import type { GameMatch } from '../api'
 import { handleMapImageError, matchMapImage } from '../matchArtwork'
+import { formatMatchDuration } from '../matchDuration'
 
 const props = defineProps<{ matches: GameMatch[] }>()
 
@@ -78,6 +79,7 @@ function dateLabel(value: string): string {
           <span><MapPin :size="12" /> {{ mapLabel(match.map) }}</span>
           <i></i>
           <span><Server :size="12" /> {{ match.serverName || `Сервер #${match.serverNumber}` }}</span>
+          <span><CalendarClock :size="12" /> {{ formatMatchDuration(match.durationSeconds) }}</span>
         </span>
         <span class="profile-match-card-result">{{ resultLabel(match) }} <ChevronRight :size="14" /></span>
       </span>
