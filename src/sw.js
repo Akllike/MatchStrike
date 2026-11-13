@@ -37,14 +37,24 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const target = new URL(event.notification.data?.url || '/', self.location.origin).href
-  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+  let target = new URL('/', self.location.origin)
+  try {
+    const requestedTarget = new URL(event.notification.data?.url || '/', self.location.origin)
+    if (requestedTarget.origin === self.location.origin) target = requestedTarget
+  } catch {
+    // Invalid notification links fall back to the app home page.
+  }
+  event.waitUntil((async () => {
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
     for (const client of clients) {
-      if (client.url.startsWith(self.location.origin) && 'focus' in client) {
-        void client.navigate(target)
-        return client.focus()
+      if (new URL(client.url).origin !== self.location.origin || !('focus' in client)) continue
+      try {
+        await client.navigate(target.href)
+        return await client.focus()
+      } catch {
+        // Open a new app window if the existing one cannot navigate.
       }
     }
-    return self.clients.openWindow(target)
-  }))
+    return self.clients.openWindow(target.href)
+  })())
 })
