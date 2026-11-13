@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Activity, CalendarDays, Check, Film, Flag, Share2, Target, Trophy, Upload, UserPlus, UserRound, UserRoundMinus, Users, X, ChevronLeft, ChevronRight } from '@lucide/vue'
+import { Activity, CalendarDays, Check, Film, Flag, LoaderCircle, Share2, Target, Trophy, Upload, UserPlus, UserRound, UserRoundMinus, Users, X } from '@lucide/vue'
 import PageLoader from './components/PageLoader.vue'
 import ProfileMatchList from './components/ProfileMatchList.vue'
 import { socialIdFromValue, socialProfileUrl } from './socialLinks'
@@ -60,6 +60,7 @@ const profileMatchesTotal = ref(0)
 const profileMatchesLoading = ref(false)
 const profileMatchesError = ref('')
 let profileMatchesRequest = 0
+const profileMatchesLoadingMore = ref(false)
 const profileTabElements = ref<HTMLButtonElement[]>([])
 
 function focusProfileTab(index: number) {
@@ -93,7 +94,11 @@ function showMediaError(message: string) {
   showTopToast(message, 'error')
 }
 
-onBeforeUnmount(dismissSuccessToast)
+window.addEventListener('scroll', onProfileMatchesScroll, { passive: true })
+onBeforeUnmount(() => {
+  dismissSuccessToast()
+  window.removeEventListener('scroll', onProfileMatchesScroll)
+})
 
 const nickname = computed(() => String(route.params.nickname ?? ''))
 const stats = computed(() => {
@@ -169,15 +174,17 @@ async function loadProfile() {
   }
 }
 
-async function loadProfileMatches(page = 1) {
-  if (!nickname.value || profileMatchesLoading.value) return
+async function loadProfileMatches(page = 1, append = false) {
+  if (!nickname.value || profileMatchesLoading.value || profileMatchesLoadingMore.value) return
+  if (append && page > profileMatchesLastPage.value) return
   const requestId = ++profileMatchesRequest
-  profileMatchesLoading.value = true
+  if (append) profileMatchesLoadingMore.value = true
+  else profileMatchesLoading.value = true
   profileMatchesError.value = ''
   try {
     const data = await getPlayerMatches(nickname.value, page)
     if (requestId !== profileMatchesRequest) return
-    profileMatches.value = data.matches
+    profileMatches.value = append ? [...profileMatches.value, ...data.matches] : data.matches
     profileMatchesPage.value = data.pagination.currentPage
     profileMatchesLastPage.value = data.pagination.lastPage
     profileMatchesTotal.value = data.pagination.total
@@ -186,7 +193,10 @@ async function loadProfileMatches(page = 1) {
       profileMatchesError.value = error instanceof Error ? error.message : 'Не удалось загрузить матчи.'
     }
   } finally {
-    if (requestId === profileMatchesRequest) profileMatchesLoading.value = false
+    if (requestId === profileMatchesRequest) {
+      profileMatchesLoading.value = false
+      profileMatchesLoadingMore.value = false
+    }
   }
 }
 
@@ -197,9 +207,10 @@ function selectProfileTab(tab: ProfileTabId) {
   }
 }
 
-function changeProfileMatchesPage(page: number) {
-  if (page < 1 || page > profileMatchesLastPage.value || profileMatchesLoading.value) return
-  void loadProfileMatches(page)
+function onProfileMatchesScroll() {
+  if (activeProfileTab.value === 'matches' && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 700 && profileMatchesPage.value < profileMatchesLastPage.value) {
+    void loadProfileMatches(profileMatchesPage.value + 1, true)
+  }
 }
 
 
@@ -606,10 +617,9 @@ watch(nickname, loadProfile, { immediate: true })
       <PageLoader v-else-if="profileMatchesLoading && !profileMatches.length" message="Загружаем историю матчей…" />
       <ProfileMatchList v-else :matches="profileMatches" />
       <div v-if="profileMatchesLastPage > 1" class="donut-pagination profile-matches-pagination">
-        <button class="friend-action" type="button" :disabled="profileMatchesPage <= 1 || profileMatchesLoading" aria-label="Предыдущая страница" @click="changeProfileMatchesPage(profileMatchesPage - 1)"><ChevronLeft :size="16" /></button>
         <span>{{ profileMatchesPage }} / {{ profileMatchesLastPage }}</span>
-        <button class="friend-action" type="button" :disabled="profileMatchesPage >= profileMatchesLastPage || profileMatchesLoading" aria-label="Следующая страница" @click="changeProfileMatchesPage(profileMatchesPage + 1)"><ChevronRight :size="16" /></button>
       </div>
+      <div v-if="profileMatchesLoadingMore" class="donut-pagination" role="status"><LoaderCircle class="is-spinning" :size="16" /> Загружаем ещё матчи…</div>
     </section>
 
     <section

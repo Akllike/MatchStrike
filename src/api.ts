@@ -254,6 +254,27 @@ export interface GameMatchDetails extends GameMatch {
     teamBScore: number
     winner: 'team_a' | 'team_b' | 'draw'
   }[]
+  seriesPlayerStats: {
+    mapIndex: number
+    map: string
+    teamCt: { name?: string | null; score: number }
+    teamT: { name?: string | null; score: number }
+    playersCt: MatchPlayer[]
+    playersT: MatchPlayer[]
+  }[]
+  veto: {
+    active: boolean
+    step: number
+    stepCount: number
+    action: 'ban' | 'pick' | null
+    team: string | null
+    lastMap: string | null
+    automatic: boolean
+    availableMaps: string[]
+    bannedMaps: string[]
+    pickedMaps: string[]
+    history: { step: number; action: 'ban' | 'pick'; map: string; team: string | null; captain: string | null; automatic: boolean }[]
+  } | null
   realtime: { key: string; host: string; port: number; secure: boolean; path: string } | null
 }
 

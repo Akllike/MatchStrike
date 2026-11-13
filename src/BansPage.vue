@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { Ban, ChevronLeft, ChevronRight, RefreshCw, Search, UserRound } from '@lucide/vue'
+import { Ban, LoaderCircle, RefreshCw, Search, UserRound } from '@lucide/vue'
 import { getBans } from './api'
 import type { BanStatusFilter, SourceBan } from './api'
 import PageLoader from './components/PageLoader.vue'
@@ -17,6 +17,7 @@ const loading = ref(true)
 const error = ref('')
 let requestId = 0
 let searchTimer: ReturnType<typeof setTimeout> | undefined
+const loadingMore = ref(false)
 
 const filters: { value: BanStatusFilter; label: string }[] = [
   { value: 'all', label: 'Все' },
@@ -26,15 +27,20 @@ const filters: { value: BanStatusFilter; label: string }[] = [
 
 const headingLabel = computed(() => status.value === 'active' ? 'АКТИВНЫЕ БАНЫ' : status.value === 'expired' ? 'ИСТЁКШИЕ БАНЫ' : 'ВСЕ БАНЫ')
 
-async function load() {
+async function load(append = false) {
+  if (loadingMore.value) return
+  const requestedPage = append ? page.value + 1 : page.value
+  if (append && requestedPage > lastPage.value) return
   const id = ++requestId
-  loading.value = true
+  if (append) loadingMore.value = true
+  else loading.value = true
   error.value = ''
   try {
-    const data = await getBans(page.value, search.value, status.value)
+    const data = await getBans(requestedPage, search.value, status.value)
     if (id !== requestId) return
     connected.value = data.connected
-    bans.value = data.bans
+    bans.value = append ? [...bans.value, ...data.bans] : data.bans
+    page.value = requestedPage
     counts.value = data.counts
     total.value = data.pagination.total
     lastPage.value = data.pagination.lastPage
@@ -42,6 +48,7 @@ async function load() {
     if (id === requestId) error.value = requestError instanceof Error ? requestError.message : 'Не удалось загрузить список банов.'
   } finally {
     if (id === requestId) loading.value = false
+    if (id === requestId) loadingMore.value = false
   }
 }
 
@@ -52,9 +59,8 @@ function selectStatus(value: BanStatusFilter) {
   void load()
 }
 
-function changePage(value: number) {
-  page.value = value
-  void load()
+function onScroll() {
+  if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 700 && !loading.value && !loadingMore.value && page.value < lastPage.value) void load(true)
 }
 
 function formatDate(value: string | null): string {
@@ -71,8 +77,9 @@ watch(search, () => {
   }, 300)
 })
 
-onMounted(() => { void load() })
+onMounted(() => { void load(); window.addEventListener('scroll', onScroll, { passive: true }) })
 onUnmounted(() => {
+  window.removeEventListener('scroll', onScroll)
   requestId++
   if (searchTimer) clearTimeout(searchTimer)
 })
@@ -99,7 +106,7 @@ onUnmounted(() => {
         <Search :size="16" aria-hidden="true" />
         <input v-model="search" type="search" maxlength="100" placeholder="Никнейм, Steam ID или причина" aria-label="Поиск по банам" />
       </label>
-      <button class="admin-server-icon-button bans-refresh" type="button" :disabled="loading" aria-label="Обновить список банов" title="Обновить список" @click="load"><RefreshCw :size="15" :class="{ 'is-spinning': loading }" /></button>
+      <button class="admin-server-icon-button bans-refresh" type="button" :disabled="loading" aria-label="Обновить список банов" title="Обновить список" @click="load()"><RefreshCw :size="15" :class="{ 'is-spinning': loading }" /></button>
     </div>
 
     <div class="bans-filter-tabs" role="group" aria-label="Фильтр банов">
@@ -112,7 +119,7 @@ onUnmounted(() => {
       <PageLoader v-if="loading" key="loading" message="Загружаем реестр банов…" />
       <div v-else-if="error" key="error" class="admin-error" role="alert">
         <strong>Не удалось загрузить баны</strong><span>{{ error }}</span>
-        <button class="friend-action" type="button" @click="load">Повторить</button>
+        <button class="friend-action" type="button" @click="load()">Повторить</button>
       </div>
       <div v-else-if="!connected" key="not-connected" class="empty-state section-empty bans-empty">
         <span class="empty-icon"><Ban :size="22" :stroke-width="1.5" /></span>
@@ -148,10 +155,6 @@ onUnmounted(() => {
       </div>
     </Transition>
 
-    <div v-if="lastPage > 1 && !loading && !error" class="donut-pagination">
-      <button class="friend-action" type="button" :disabled="page <= 1" aria-label="Предыдущая страница" @click="changePage(page - 1)"><ChevronLeft :size="16" /></button>
-      <span>{{ page }} / {{ lastPage }}</span>
-      <button class="friend-action" type="button" :disabled="page >= lastPage" aria-label="Следующая страница" @click="changePage(page + 1)"><ChevronRight :size="16" /></button>
-    </div>
+    <div v-if="loadingMore" class="donut-pagination" role="status"><LoaderCircle class="is-spinning" :size="16" /> Загружаем ещё баны…</div>
   </section>
 </template>

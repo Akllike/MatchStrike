@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Gamepad2, ChevronLeft, ChevronRight, Swords, Users } from '@lucide/vue'
+import { Gamepad2, LoaderCircle, Swords, Users } from '@lucide/vue'
 import { getGameMatches } from './api'
 import type { GameMatch } from './api'
 import PageLoader from './components/PageLoader.vue'
@@ -21,6 +21,7 @@ const error = ref('')
 let timer: ReturnType<typeof setInterval> | undefined
 let requestId = 0
 let pending = false
+const loadingMore = ref(false)
 
 const matchGroups = computed(() => {
   const live = matches.value.filter(match => match.status === 'live')
@@ -35,18 +36,23 @@ const matchGroups = computed(() => {
   ].filter(group => group.matches.length)
 })
 
-async function load(quiet = false) {
-  if (quiet && pending) return
+async function load(quiet = false, append = false) {
+  if (pending) return
+  const requestedMode = mode.value
+  const requestedPage = append ? page.value + 1 : page.value
+  if (append && requestedPage > lastPage.value) return
   const id = ++requestId
   pending = true
-  if (!quiet) loading.value = true
+  if (!quiet && !append) loading.value = true
+  if (append) loadingMore.value = true
   const minimumLoading = quiet ? Promise.resolve() : new Promise<void>(resolve => setTimeout(resolve, 350))
   try {
-    const data = await getGameMatches(mode.value, page.value)
-    if (id !== requestId) return
+    const data = await getGameMatches(requestedMode, requestedPage)
+    if (id !== requestId || requestedMode !== mode.value) return
     connected.value = data.connected
     hasArchive.value = data.hasMatches
-    matches.value = data.matches
+    matches.value = append ? [...matches.value, ...data.matches] : data.matches
+    page.value = requestedPage
     total.value = data.pagination.total
     lastPage.value = data.pagination.lastPage
     error.value = ''
@@ -57,6 +63,7 @@ async function load(quiet = false) {
     if (id === requestId) {
       pending = false
       loading.value = false
+      loadingMore.value = false
     }
   }
 }
@@ -70,9 +77,8 @@ function selectMode(value: 'War' | 'Mix') {
   })
 }
 
-function changePage(value: number) {
-  page.value = value
-  void load()
+function onScroll() {
+  if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 700 && !pending && page.value < lastPage.value) void load(true, true)
 }
 
 function statusLabel(status: GameMatch['status']) {
@@ -80,6 +86,11 @@ function statusLabel(status: GameMatch['status']) {
 }
 
 watch(() => route.params.mode, () => {
+  requestId++
+  pending = false
+  loadingMore.value = false
+  matches.value = []
+  loading.value = true
   page.value = 1
   void load()
 })
@@ -87,8 +98,9 @@ watch(() => route.params.mode, () => {
 onMounted(() => {
   void load()
   timer = setInterval(() => { if (!document.hidden) void load(true) }, 15000)
+  window.addEventListener('scroll', onScroll, { passive: true })
 })
-onUnmounted(() => { if (timer) clearInterval(timer); requestId++ })
+onUnmounted(() => { if (timer) clearInterval(timer); window.removeEventListener('scroll', onScroll); requestId++ })
 </script>
 
 <template>
@@ -123,17 +135,13 @@ onUnmounted(() => { if (timer) clearInterval(timer); requestId++ })
               <div class="donut-match-meta"><span>МАТЧ #{{ match.id }}</span><span class="donut-status" :class="`is-${match.status}`">{{ statusLabel(match.status) }}</span></div>
               <div class="donut-match-teams"><strong>{{ match.teamA.name || 'Команда CT' }}</strong><b>{{ match.teamA.score ?? '—' }} : {{ match.teamB.score ?? '—' }}</b><strong>{{ match.teamB.name || 'Команда T' }}</strong></div>
               <div class="donut-score-label">Счёт {{ match.scoreType === 'maps' ? 'по картам' : 'по раундам' }}</div>
-              <div class="donut-match-footer"><span>{{ match.mode }} · {{ match.format || 'Формат не указан' }}</span><span>Сервер #{{ match.serverNumber }}{{ match.serverName ? ` · ${match.serverName}` : '' }}</span><span>{{ match.map }}</span><span>Обновлено: {{ new Date(match.updatedAt).toLocaleString('ru-RU') }}</span></div>
+              <div class="donut-match-footer"><span>{{ match.mode }} · {{ match.format || (match.mode === 'Mix' ? 'Classic' : 'Формат не указан') }}</span><span>Сервер #{{ match.serverNumber }}{{ match.serverName ? ` · ${match.serverName}` : '' }}</span><span>{{ match.map }}</span><span>Длительность: —</span><span>Обновлено: {{ new Date(match.updatedAt).toLocaleString('ru-RU') }}</span></div>
             </RouterLink>
           </div>
         </section>
       </div>
       <div v-else key="empty" class="empty-state section-empty matches-empty"><span class="empty-icon"><Gamepad2 :size="21" /></span><div><strong>Матчей пока нет</strong><span>{{ connected ? 'Здесь появятся матчи после получения данных от сервера.' : 'История появится после подключения DonutMatch.' }}</span></div></div>
     </Transition>
-    <div v-if="lastPage > 1 && !loading && !error" class="donut-pagination">
-      <button class="friend-action" type="button" :disabled="page <= 1" aria-label="Предыдущая страница" @click="changePage(page - 1)"><ChevronLeft :size="16" /></button>
-      <span>{{ page }} / {{ lastPage }}</span>
-      <button class="friend-action" type="button" :disabled="page >= lastPage" aria-label="Следующая страница" @click="changePage(page + 1)"><ChevronRight :size="16" /></button>
-    </div>
+    <div v-if="loadingMore" class="donut-pagination" role="status"><LoaderCircle class="is-spinning" :size="16" /> Загружаем ещё матчи…</div>
   </section>
 </template>

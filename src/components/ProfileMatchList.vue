@@ -23,10 +23,6 @@ function resultClass(match: GameMatch): string {
 
 function mapLabel(value: string): string {
   return value
-    .replace(/^(?:de|cs)_/i, '')
-    .replace(/_(?:csgo|ob|v\d+)$/i, '')
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
 function dateLabel(value: string): string {

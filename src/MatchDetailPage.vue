@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ArrowLeft, Crosshair, Map as MapIcon, Radio, Server, Shield, Swords, Users } from '@lucide/vue'
+import { ArrowLeft, Clock3, Crosshair, Map as MapIcon, Radio, Server, Shield, Swords, Users } from '@lucide/vue'
 import Pusher from 'pusher-js'
 import { getGameMatch } from './api'
 import type { GameMatchDetails, MatchPlayer } from './api'
@@ -15,6 +15,7 @@ const error = ref('')
 const refreshError = ref('')
 const connection = ref<'connecting' | 'connected' | 'disconnected' | 'unconfigured'>('connecting')
 const mapImageLoaded = ref(false)
+const selectedStatsTab = ref(0)
 let timer: ReturnType<typeof setInterval> | undefined
 let requestId = 0
 let pending = false
@@ -34,6 +35,30 @@ const teams = computed(() => match.value ? [
   { side: 'CT', name: match.value.roundTeams[0].name || 'Спецназ', players: match.value.playersCt },
   { side: 'T', name: match.value.roundTeams[1].name || 'Террористы', players: match.value.playersT },
 ] : [])
+
+const seriesIsLive = computed(() => Boolean(match.value && match.value.scoreType === 'maps' && ['live', 'preparing'].includes(match.value.status)))
+const resultTeams = computed(() => {
+  if (!match.value) return []
+  if (selectedStatsTab.value === 0) {
+    const totals = new Map<string, MatchPlayer & { side: string }>()
+    for (const map of match.value.seriesPlayerStats) {
+      for (const [side, players] of [['CT', map.playersCt], ['T', map.playersT]] as const) {
+        for (const player of players) {
+          const key = `${side}:${player.account?.id ?? player.name.toLocaleLowerCase()}`
+          const current = totals.get(key)
+          if (current) {
+            current.kills = (current.kills ?? 0) + (player.kills ?? 0)
+            current.deaths = (current.deaths ?? 0) + (player.deaths ?? 0)
+          } else totals.set(key, { ...player, side, kills: player.kills ?? 0, deaths: player.deaths ?? 0 })
+        }
+      }
+    }
+    return ['CT', 'T'].map(side => ({ side, name: side === 'CT' ? match.value!.teamA.name || 'Спецназ' : match.value!.teamB.name || 'Террористы', players: [...totals.values()].filter(player => player.side === side) }))
+  }
+  const selected = match.value.seriesPlayerStats.find(item => item.mapIndex === selectedStatsTab.value)
+  if (!selected) return []
+  return [{ side: 'CT', name: selected.teamCt.name || 'Спецназ', players: selected.playersCt }, { side: 'T', name: selected.teamT.name || 'Террористы', players: selected.playersT }]
+})
 
 const mapImage = computed(() => {
   return match.value ? matchMapImage(match.value.map) : null
@@ -166,7 +191,7 @@ onUnmounted(() => {
 
 <template>
   <div class="match-detail-page">
-    <RouterLink class="donut-back match-detail-back" :to="{ name: 'matches' }"><ArrowLeft :size="15" /> Все матчи</RouterLink>
+    <RouterLink class="donut-back match-detail-back" :to="{ name: 'matches-mode', params: { mode: match?.mode === 'War' ? 'war' : 'mix' } }"><ArrowLeft :size="15" /> Все матчи</RouterLink>
     <Transition name="profile-content" mode="out-in">
     <PageLoader v-if="loading" key="loading" message="Загружаем матч…" />
     <div v-else-if="error" key="error" class="admin-error" role="alert"><strong>Не удалось загрузить матч</strong><span>{{ error }}</span><button class="friend-action" type="button" @click="load()">Повторить</button></div>
@@ -183,14 +208,15 @@ onUnmounted(() => {
           <img class="match-hero-character is-ct" :src="'/uploads/maps/ct.png'" alt="" />
           <img class="match-hero-character is-t" :src="'/uploads/maps/tt.png'" alt="" />
         </div>
-        <div class="match-hero-top"><span><Swords :size="14" /> {{ match.mode }} · {{ match.format || 'Формат не указан' }}</span><span>МАТЧ #{{ match.id }}</span></div>
+        <div class="match-hero-top"><span><Swords :size="14" /> {{ match.mode }} · {{ match.format || (match.mode === 'Mix' ? 'Classic' : 'Формат не указан') }}</span><span>МАТЧ #{{ match.id }}</span></div>
         <div class="match-hero-scoreboard">
-          <div class="match-hero-team"><span class="match-team-emblem is-a">{{ initials(match.teamA.name) }}</span><strong>{{ match.teamA.name || 'Команда CT' }}</strong><small>КОМАНДА 1</small></div>
-          <div class="match-hero-result"><span>СЧЁТ МАТЧА</span><strong>{{ match.teamA.score ?? '—' }} <i>:</i> {{ match.teamB.score ?? '—' }}</strong><small>{{ match.scoreType === 'maps' ? 'ПО КАРТАМ' : 'ПО РАУНДАМ' }}</small></div>
-          <div class="match-hero-team"><span class="match-team-emblem is-b">{{ initials(match.teamB.name) }}</span><strong>{{ match.teamB.name || 'Команда T' }}</strong><small>КОМАНДА 2</small></div>
+          <div class="match-hero-team"><span class="match-team-emblem is-a">{{ initials(seriesIsLive ? match.roundTeams[0].name : match.teamA.name) }}</span><strong>{{ (seriesIsLive ? match.roundTeams[0].name : match.teamA.name) || 'Команда CT' }}</strong><small>КОМАНДА 1</small></div>
+          <div class="match-hero-result"><span>{{ seriesIsLive ? 'СЧЁТ КАРТЫ' : 'СЧЁТ МАТЧА' }}</span><strong>{{ seriesIsLive ? match.roundTeams[0].score : match.teamA.score ?? '—' }} <i>:</i> {{ seriesIsLive ? match.roundTeams[1].score : match.teamB.score ?? '—' }}</strong><small>{{ seriesIsLive ? 'ТЕКУЩАЯ КАРТА' : match.scoreType === 'maps' ? 'ПО КАРТАМ' : 'ПО РАУНДАМ' }}</small><small v-if="seriesIsLive" class="match-series-score">Серия: {{ match.teamA.score ?? 0 }} : {{ match.teamB.score ?? 0 }}</small></div>
+          <div class="match-hero-team"><span class="match-team-emblem is-b">{{ initials(seriesIsLive ? match.roundTeams[1].name : match.teamB.name) }}</span><strong>{{ (seriesIsLive ? match.roundTeams[1].name : match.teamB.name) || 'Команда T' }}</strong><small>КОМАНДА 2</small></div>
         </div>
         <div class="match-hero-bottom">
           <span><MapIcon :size="15" /><span><small>КАРТА</small><strong>{{ match.map }}</strong></span></span>
+          <span><Clock3 :size="15" /><span><small>ДЛИТЕЛЬНОСТЬ</small><strong>—</strong></span></span>
           <span><Server :size="15" /><span><small>СЕРВЕР</small><strong>#{{ match.serverNumber }}{{ match.serverName ? ` · ${match.serverName}` : '' }}</strong></span></span>
           <span><Crosshair :size="15" /><span><small>РАУНД</small><strong>{{ match.round ?? '—' }}</strong></span></span>
         </div>
@@ -205,6 +231,19 @@ onUnmounted(() => {
         <time :datetime="match.updatedAt">Последние данные: {{ new Date(match.updatedAt).toLocaleString('ru-RU') }}</time>
       </div>
 
+      <section v-if="match.veto && match.status === 'preparing'" class="match-detail-section veto-section" aria-labelledby="match-veto-title">
+        <div class="match-section-heading"><div><div class="section-kicker">SERIES / VETO</div><h2 id="match-veto-title">Подготовка карт</h2><p>{{ match.veto.active ? `Шаг ${match.veto.step} из ${match.veto.stepCount}` : 'Вето завершено' }}</p></div><span class="match-section-icon"><MapIcon :size="19" /></span></div>
+        <p v-if="match.veto.lastMap" class="match-section-note">Последнее действие: команда {{ match.veto.team || 'не указана' }} {{ match.veto.action === 'ban' ? 'забанила' : match.veto.action === 'pick' ? 'выбрала' : 'обработала' }} {{ match.veto.lastMap }}<template v-if="match.veto.automatic"> (автоматически)</template></p>
+        <div class="veto-map-groups">
+          <div v-if="match.veto.bannedMaps.length"><strong>Забанены</strong><ul><li v-for="map in match.veto.bannedMaps" :key="`ban-${map}`">{{ map }}</li></ul></div>
+          <div v-if="match.veto.pickedMaps.length"><strong>Выбраны</strong><ul><li v-for="map in match.veto.pickedMaps" :key="`pick-${map}`">{{ map }}</li></ul></div>
+          <div v-if="match.veto.availableMaps.length"><strong>Доступны</strong><ul><li v-for="map in match.veto.availableMaps" :key="`available-${map}`">{{ map }}</li></ul></div>
+          <p v-if="!match.veto.bannedMaps.length && !match.veto.pickedMaps.length && !match.veto.availableMaps.length" class="match-detail-empty">Плагин пока не передал список карт.</p>
+        </div>
+        <ol v-if="match.veto.history.length" class="veto-history" aria-label="История выбора карт">
+          <li v-for="event in match.veto.history" :key="event.step"><span class="veto-history-step">{{ String(event.step).padStart(2, '0') }}</span><span class="veto-history-action" :class="`is-${event.action}`">{{ event.action === 'ban' ? 'Бан' : 'Пик' }}</span><strong>{{ event.map }}</strong><span>{{ event.team || 'Команда не указана' }}<template v-if="event.captain"> · {{ event.captain }}</template><template v-if="event.automatic"> · автоматически</template></span></li>
+        </ol>
+      </section>
       <section v-if="match.scoreType === 'maps'" class="match-detail-section" aria-labelledby="match-maps-title">
         <div class="match-section-heading"><div><div class="section-kicker">SERIES / MAPS</div><h2 id="match-maps-title">Карты серии</h2><p>Результаты карт в порядке игры</p></div><span class="match-section-icon"><MapIcon :size="19" /></span></div>
         <div v-if="maps.length" class="match-map-list">
@@ -221,11 +260,15 @@ onUnmounted(() => {
 
       <section v-if="match.status === 'finished'" class="match-detail-section" aria-labelledby="match-results-title">
         <div class="match-section-heading"><div><div class="section-kicker">MATCH / RESULTS</div><h2 id="match-results-title">Результаты игроков</h2><p>Последние полученные данные игроков · {{ match.map }}</p></div><span class="match-section-icon"><Users :size="19" /></span></div>
+        <div v-if="match.scoreType === 'maps'" class="series-stats-tabs" role="tablist" aria-label="Статистика игроков по серии">
+          <button class="series-stats-tab" type="button" role="tab" :aria-selected="selectedStatsTab === 0" @click="selectedStatsTab = 0">Σ Суммарно</button>
+          <button v-for="map in match.seriesPlayerStats" :key="map.mapIndex" class="series-stats-tab" type="button" role="tab" :aria-selected="selectedStatsTab === map.mapIndex" @click="selectedStatsTab = map.mapIndex"><MapIcon :size="15" /> {{ map.map }}</button>
+        </div>
         <div class="match-results">
           <div class="match-results-scroll" role="region" aria-label="Результаты игроков" tabindex="0">
             <table class="match-results-table">
               <thead><tr><th scope="col">Игрок</th><th scope="col">Сторона</th><th scope="col" title="Убийства">Убийства</th><th scope="col" title="Смерти">Смерти</th><th scope="col" title="Разница убийств и смертей">+ / −</th><th scope="col" title="Отношение убийств к смертям">K/D</th></tr></thead>
-              <tbody v-for="team in teams" :key="team.side">
+              <tbody v-for="team in (match.scoreType === 'maps' ? resultTeams : teams)" :key="team.side">
                 <tr class="match-results-team"><th colspan="6" scope="rowgroup"><span class="match-results-side" :class="`is-${team.side.toLowerCase()}`">{{ team.side }}</span><strong>{{ team.name }}</strong><small>Сторона {{ team.side }} · игроков: {{ team.players.length }}</small></th></tr>
                 <tr v-for="(player, index) in team.players" :key="`${index}-${player.name}`">
                   <th scope="row"><span class="match-results-player"><img v-if="player.account?.avatarUrl" class="match-player-avatar" :src="player.account.avatarUrl" :alt="player.account.nickname" /><span v-else class="match-player-avatar">{{ initials(player.name) }}</span><span class="match-player-label"><RouterLink v-if="player.account" :to="player.account.profileUrl">{{ player.account.nickname }}</RouterLink><strong v-else>{{ player.name }}</strong><small v-if="player.account && player.account.nickname !== player.name">Игровой ник: {{ player.name }}</small></span></span></th>
@@ -237,7 +280,7 @@ onUnmounted(() => {
             </table>
           </div>
         </div>
-        <p class="match-section-note">Показана статистика последнего полученного снимка карты, а не сумма по серии. + / − — разница убийств и смертей; K/D — их отношение. При нуле смертей K/D не рассчитывается.</p>
+        <p class="match-section-note">{{ match.scoreType === 'maps' && selectedStatsTab === 0 ? 'Суммарные убийства и смерти по сохранённым картам серии.' : 'Статистика игроков на выбранной карте.' }} + / − — разница убийств и смертей; K/D — их отношение. При нуле смертей K/D не рассчитывается.</p>
         <p v-if="match.playersRetained" class="match-section-note">Показаны последние данные игроков, полученные перед завершением карты.</p>
       </section>
       <section v-else class="match-detail-section" aria-labelledby="match-players-title">
