@@ -1087,7 +1087,7 @@ export interface LobbyMember { userId: number; nickname: string; avatarUrl: stri
 export interface LobbyRoom {
   id: string; name: string; status: 'waiting' | 'provisioning' | 'joining' | 'live' | 'completed' | 'cancelled'; captainId: number | null
   isPrivate: boolean; teamSize: number; format: 'Classic' | 'BO1' | 'BO3' | 'BO5'; maps: string[]; roundsPerHalf: number
-  teamAName: string; teamBName: string; matchId: number | null; deadline: string | null; finishReason: string | null; createdAt: string
+  teamAName: string; teamBName: string; matchId: number | null; deadline: string | null; preparationEndsAt: string | null; finishReason: string | null; createdAt: string
   server: { address: string; password: string } | null; members: LobbyMember[]
 }
 export interface LobbySettings { name: string; password?: string | null; team_size: number; format: LobbyRoom['format']; maps: string[]; rounds_per_half: number; team_a_name: string; team_b_name: string }
