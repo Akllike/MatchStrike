@@ -1083,7 +1083,11 @@ export async function updateAdminStatisticsSource(source: StatisticsSource): Pro
   return data.source
 }
 
-export interface LobbyMember { userId: number; nickname: string; avatarUrl: string | null; team: number; seat: number; connected: boolean }
+export interface LobbyPlayerStatistics {
+  elo: number; level: number; matches: number; kdr: number; avg: number | null
+  hs: number | null; adr: number | null; kast: number | null; winrate: number | null
+}
+export interface LobbyMember { userId: number; nickname: string; avatarUrl: string | null; team: number; seat: number; connected: boolean; statistics: LobbyPlayerStatistics | null }
 export interface LobbyRoom {
   id: string; name: string; status: 'waiting' | 'provisioning' | 'joining' | 'live' | 'completed' | 'cancelled'; captainId: number | null
   isPrivate: boolean; teamSize: number; format: 'Classic' | 'BO1' | 'BO3' | 'BO5'; maps: string[]; roundsPerHalf: number
@@ -1105,6 +1109,9 @@ export async function takeLobbySeat(id: string, team: number, seat: number, pass
   return (await postJson<{ room: LobbyRoom }>(`${apiBaseUrl}/lobbies/${id}/seat`, { team, seat, password })).room
 }
 export async function leaveLobby(id: string): Promise<void> { await postJson(`${apiBaseUrl}/lobbies/${id}/leave`) }
+export async function kickLobbyMember(id: string, userId: number): Promise<LobbyRoom> {
+  return (await mutateJson<{ room: LobbyRoom }>(`${apiBaseUrl}/lobbies/${id}/members/${userId}`, 'DELETE')).room
+}
 export async function startLobby(id: string): Promise<LobbyRoom> { return (await postJson<{ room: LobbyRoom }>(`${apiBaseUrl}/lobbies/${id}/start`)).room }
 export async function cancelLobby(id: string): Promise<void> { await mutateJson(`${apiBaseUrl}/lobbies/${id}`, 'DELETE') }
 export async function setServerLobbyMode(id: number, enabled: boolean): Promise<void> { await mutateJson(`${apiBaseUrl}/admin/servers/${id}/lobby`, 'PUT', { enabled }) }

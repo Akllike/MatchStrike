@@ -2,9 +2,10 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Users, Plus, LockKeyhole, Crown, ArrowLeft, ArrowUpRight, X, Copy, Play, Timer, Map, Settings, ShieldCheck, LoaderCircle, Swords, Trophy } from '@lucide/vue'
-import { getCurrentUser, getLobbies, getLobby, saveLobby, takeLobbySeat, leaveLobby, startLobby, cancelLobby } from './api'
+import { getCurrentUser, getLobbies, getLobby, saveLobby, takeLobbySeat, leaveLobby, startLobby, cancelLobby, kickLobbyMember } from './api'
 import type { AuthUser, LobbyListing, LobbyRoom, LobbySettings } from './api'
 import PageLoader from './components/PageLoader.vue'
+import LobbyPlayer from './components/LobbyPlayer.vue'
 import { matchMapImage } from './matchArtwork'
 
 const router = useRouter()
@@ -64,7 +65,13 @@ async function refresh() {
     const selectedId = room.value?.id ?? (typeof route.query.room === 'string' ? route.query.room : null)
     if (selectedId) {
       const updated = data.rooms.find(item => item.id === selectedId) ?? (data.myRoom?.id === selectedId ? data.myRoom : await getLobby(selectedId))
-      if (!disposed && id === version) room.value = updated
+      if (!disposed && id === version) {
+        const wasMember = room.value?.members.some(member => member.userId === user.value?.id)
+        room.value = updated
+        if (wasMember && updated.status === 'waiting' && !updated.members.some(member => member.userId === user.value?.id)) {
+          error.value = 'Вас исключили из комнаты. Повторно войти можно через 15 секунд после исключения.'
+        }
+      }
     }
   } catch (e) { if (!disposed && id === version) error.value = e instanceof Error ? e.message : 'Не удалось загрузить лобби.' }
   finally { fetching = false; if (!disposed) loading.value = false }
@@ -108,6 +115,10 @@ async function occupy(team: number, seat: number) {
   if (room.value.isPrivate && !mine.value) { targetSeat.value = { team, seat }; joinPassword.value = ''; formError.value = ''; passwordDialog.value?.showModal(); return }
   await act(async () => { room.value = await takeLobbySeat(room.value!.id, team, seat) })
 }
+async function kick(userId: number) {
+  if (!room.value || !captain.value || room.value.status !== 'waiting') return
+  await act(async () => { room.value = await kickLobbyMember(room.value!.id, userId) })
+}
 async function joinPrivate() {
   if (!room.value || !targetSeat.value || busy.value) return
   busy.value = true; formError.value = ''; version++
@@ -150,7 +161,16 @@ onUnmounted(() => { disposed = true; version++; if (poll) clearInterval(poll); i
       <div class="lobby-room-maps"><span><Map :size="15" /> Карты матча</span><b v-for="(map, index) in room.maps" :key="map"><small>{{ String(index + 1).padStart(2, '0') }}</small>{{ map }}</b></div>
       <div v-if="room.status === 'provisioning' || room.status === 'joining'" class="lobby-countdown"><Timer :size="27" /><div><strong>{{ countdown }}</strong><span>на подключение и начало матча</span></div><p>{{ room.status === 'provisioning' ? 'Игровой сервер готовит карту и защищает вход. Адрес появится после подтверждения готовности.' : room.preparationEndsAt ? 'Все игроки заняли свои стороны и появились на карте. Идёт 30-секундная подготовка перед ножевым раундом.' : 'Подключитесь через Steam и займите свою сторону. Когда все игроки появятся на карте, начнётся отсчёт 30 секунд.' }}</p></div>
       <div v-if="terminal" class="lobby-result"><Trophy :size="24" /><h3>{{ room.status === 'completed' ? 'Матч завершён' : 'Комната закрыта' }}</h3><p>{{ closeReason(room.finishReason) }}</p><RouterLink v-if="room.matchId" :to="`/matches/${room.matchId}`" class="friend-action">Страница матча <ArrowUpRight :size="14" /></RouterLink></div>
-      <div v-else class="lobby-teams"><section v-for="team in [1, 2]" :key="team" class="lobby-team" :class="{ 'is-team-b': team === 2 }"><header><span>{{ team === 1 ? 'A' : 'B' }}</span><h3>{{ team === 1 ? room.teamAName : room.teamBName }}</h3><small>{{ room.members.filter(member => member.team === team).length }} / {{ room.teamSize }}</small></header><button v-for="seat in room.teamSize" :key="seat" type="button" class="lobby-seat" :class="{ 'is-occupied': seatMember(team, seat), 'is-me': seatMember(team, seat)?.userId === user?.id }" :disabled="busy || room.status !== 'waiting' || !!seatMember(team, seat)" @click="occupy(team, seat)"><span class="seat-number">{{ String(seat).padStart(2, '0') }}</span><template v-if="seatMember(team, seat)"><img v-if="seatMember(team, seat)?.avatarUrl" :src="seatMember(team, seat)!.avatarUrl!" alt="" /><span v-else class="seat-avatar"><Users :size="19" /></span><span class="seat-player"><strong>{{ seatMember(team, seat)?.nickname }}</strong><small>{{ seatMember(team, seat)?.userId === user?.id ? 'Это вы' : 'Участник' }}</small></span><Crown v-if="seatMember(team, seat)?.userId === room.captainId" class="seat-crown" :size="17" /><span v-if="room.status !== 'waiting'" class="seat-connection" :class="{ connected: seatMember(team, seat)?.connected }" v-tooltip="seatMember(team, seat)?.connected ? 'На игровом сервере' : 'Ожидаем подключения'"></span></template><template v-else><span class="seat-avatar empty"><Plus :size="20" /></span><span class="seat-player"><strong>Свободное место</strong><small>{{ room.status === 'waiting' ? 'Занять место в команде' : 'Состав зафиксирован' }}</small></span><ArrowUpRight :size="16" /></template></button></section></div>
+      <div v-else class="lobby-teams">
+        <section v-for="team in [1, 2]" :key="team" class="lobby-team" :class="{ 'is-team-b': team === 2 }">
+          <header><span>{{ team === 1 ? 'A' : 'B' }}</span><h3>{{ team === 1 ? room.teamAName : room.teamBName }}</h3><small>{{ room.members.filter(member => member.team === team).length }} / {{ room.teamSize }}</small></header>
+          <div v-for="seat in room.teamSize" :key="seat" class="lobby-seat" :class="{ 'is-occupied': seatMember(team, seat), 'is-me': seatMember(team, seat)?.userId === user?.id }">
+            <span class="seat-number">{{ String(seat).padStart(2, '0') }}</span>
+            <LobbyPlayer v-if="seatMember(team, seat)" :member="seatMember(team, seat)!" :captain="seatMember(team, seat)?.userId === room.captainId" :me="seatMember(team, seat)?.userId === user?.id" :can-kick="captain && room.status === 'waiting' && seatMember(team, seat)?.userId !== user?.id" :busy="busy" :show-connection="room.status !== 'waiting'" @kick="kick" />
+            <button v-else type="button" class="empty-seat-button" :disabled="busy || room.status !== 'waiting'" @click="occupy(team, seat)"><span class="seat-avatar empty"><Plus :size="20" /></span><span class="seat-player"><strong>Свободное место</strong><small>{{ room.status === 'waiting' ? 'Занять место в команде' : 'Состав зафиксирован' }}</small></span><ArrowUpRight :size="16" /></button>
+          </div>
+        </section>
+      </div>
       <div v-if="room.server && mine" class="lobby-connect"><div><span class="section-kicker">ВАШ ИГРОВОЙ СЕРВЕР</span><h3>{{ room.server.address }}</h3><p>Пароль: <code>{{ room.server.password }}</code><button type="button" aria-label="Скопировать пароль" @click="copy(room.server.password, 'Пароль')"><Copy :size="13" /></button></p></div><div><button class="friend-action" @click="copy(`password ${room.server.password}; connect ${room.server.address}`, 'Команда')"><Copy :size="14" /> Команда подключения</button><a class="lobby-primary" :href="`steam://connect/${room.server.address}/${encodeURIComponent(room.server.password)}`"><Play :size="15" /> Подключиться</a></div></div>
       <footer v-if="!terminal" class="lobby-controls"><p><Crown :size="16" /> {{ captain ? 'Вы капитан комнаты' : 'Настройки и запуск — у капитана комнаты' }}<span v-if="room.status === 'waiting'">{{ filled ? 'Обе команды в сборе' : `Ожидаем ещё ${room.teamSize * 2 - room.members.length} игроков` }}</span></p><div><button v-if="mine && room.status === 'waiting'" class="friend-action" :disabled="busy" @click="act(async () => { await leaveLobby(room!.id); back() })">Покинуть</button><button v-if="captain && ['waiting', 'joining', 'provisioning'].includes(room.status)" class="friend-action" :disabled="busy" @click="act(async () => { await cancelLobby(room!.id); back() })">Закрыть комнату</button><button v-if="captain && room.status === 'waiting'" class="lobby-primary" :disabled="busy || !filled" @click="act(async () => { room = await startLobby(room!.id) })"><LoaderCircle v-if="busy" class="is-spinning" :size="16" /><Play v-else :size="16" /> Запустить матч</button><RouterLink v-if="room.matchId" class="friend-action" :to="`/matches/${room.matchId}`">Матч <ArrowUpRight :size="14" /></RouterLink></div></footer>
     </template>
@@ -161,6 +181,7 @@ onUnmounted(() => { disposed = true; version++; if (poll) clearInterval(poll); i
 </template>
 
 <style scoped>
+.empty-seat-button { display:flex; align-items:center; gap:12px; flex:1; min-width:0; padding:0; border:0; background:none; color:inherit; text-align:left; }
 .lobby-page { color:var(--text); }.lobby-page button,.lobby-page input,.lobby-page select { font:inherit; }.lobby-page button { cursor:pointer; }.lobby-page button:disabled { opacity:.5; cursor:not-allowed; }.lobby-page h2,.lobby-page h3,.lobby-page p { margin:0; }.lobby-page button:focus-visible,.lobby-page a:focus-visible { outline:2px solid var(--yellow); outline-offset:4px; }
 .lobby-toolbar { display:flex; align-items:center; justify-content:space-between; gap:18px; margin:28px 0 22px; }.lobby-toolbar h2 { margin:7px 0 12px; font-size:23px; font-weight:700; letter-spacing:-.6px; }.lobby-toolbar h2 small { color:var(--subtle); font-size:14px; margin-left:7px; }.lobby-toolbar p { display:flex; gap:7px; align-items:center; color:var(--muted); font-size:11px; }.lobby-online-dot { width:6px; height:6px; background:var(--yellow); border-radius:50%; }
 .lobby-primary { display:inline-flex; align-items:center; justify-content:center; gap:9px; border:0; border-radius:10px; padding:13px 18px; background:var(--yellow); color:var(--bg); font-size:12px!important; font-weight:700!important; text-decoration:none; white-space:nowrap; }.lobby-primary:hover:not(:disabled) { filter:brightness(1.08); }
