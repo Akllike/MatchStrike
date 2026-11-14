@@ -26,7 +26,6 @@ const statsSections: { id: StatsSection; label: string; icon: typeof Activity }[
 ]
 const activeStatsSection = ref<StatsSection>('overview')
 const activeStatsGroup = ref('all')
-const statsDetails = ref<HTMLDetailsElement | null>(null)
 const formRange = ref<10 | 20 | 50>(10)
 const formRanges = [10, 20, 50] as const
 const selectedFormMatchId = ref<number | null>(null)
@@ -323,7 +322,7 @@ const detailedStats = computed(() => {
     else if (label === 'War победы в клатчах') display = war?.clutch_wins ?? '—'
     else if (label === 'War попытки клатча') display = war?.clutch_attempts ?? '—'
     if (field === 'timeAliveSeconds' && typeof display === 'number') display = display.toFixed(1)
-    return { label, value: display, note }
+    return { label, value: display, note, field }
   })
 })
 const statisticsHighlights = computed(() => ['K/D', 'HS%', 'ADR', 'AVG', 'DPR', 'KAST'].map(label => {
@@ -356,7 +355,7 @@ const levelProgress = computed(() => {
 })
 const statGroupDefinitions = [
   { title: 'Боевая эффективность', code: '01 / COMBAT', labels: ['Убийства', 'Смерти', 'Ассисты', 'Хедшоты', 'K/D', 'HS%', 'ADR', 'DPR', 'Урон', 'Полученный урон', 'Разница убийств за раунд', 'Разница убийств за 24 раунда', 'Чистый урон за раунд'] },
-  { title: 'Влияние на раунд', code: '02 / ROUND IMPACT', labels: ['Раунды', 'Раунды с убийством', 'Раунды с убийством %', 'KAST', 'Убийства в выигранных раундах', 'Убийств за победный раунд', 'Убийства в пережитых раундах', 'Убийства в пережитых раундах за раунд', 'Вклад в победу раунда', 'Победы в раундах', 'Поражения в раундах', 'Последний живой', 'Последний живой %', 'Постплент раунды', 'Выживания после установки', 'Выживание после установки %', 'Мультикиллы', 'Раунды с мультикиллом %', 'Трипл-киллы', 'Квадро-киллы', 'Эйсы'] },
+  { title: 'Влияние на раунд', code: '02 / ROUND IMPACT', labels: ['Раунды', 'Раунды с убийством', 'Раунды с убийством %', 'KAST', 'Убийства в выигранных раундах', 'Убийств за победный раунд', 'Убийства в пережитых раундах', 'Убийства в пережитых раундах за раунд', 'Вклад в победу раунда', 'Доля round win shares', 'Победы в раундах', 'Поражения в раундах', 'Последний живой', 'Последний живой %', 'Постплент раунды', 'Выживания после установки', 'Выживание после установки %', 'Мультикиллы', 'Раунды с мультикиллом %', 'Трипл-киллы', 'Квадро-киллы', 'Эйсы'] },
   { title: 'Первые дуэли', code: '03 / ENTRY', labels: ['Entry попытки', 'Entry-фраги', 'Entry смерти', 'Entry смерть разменяна', 'Успех первых дуэлей', 'Размен первых смертей %', 'Среднее время первой дуэли', 'Замеры времени первых дуэлей', 'Ранг первых дуэлей'] },
   { title: 'Клатчи', code: '04 / CLUTCH', labels: ['Победы в клатчах', 'Попытки клатча', 'Успех клатчей', 'Клатч-попыток на 24 раунда'] },
   { title: 'Размены и поддержка', code: '05 / TRADING', labels: ['Смерти, доступные для размена', 'Tradeable смерти за раунд', 'Разменянные смерти', 'Разменянные смерти %', 'Trade-фраги', 'Trade-фраги %', 'Возможности размена', 'Возможности размена за раунд', 'Отменённые размены', 'Отменённые размены за раунд', 'Bait-ассисты', 'Bait-ассисты за раунд', 'Bait-фраги', 'Bait-фраги %', 'Assisted kills', 'Assisted kills %'] },
@@ -366,11 +365,9 @@ const statGroupDefinitions = [
 ] as const
 const detailedStatGroups = computed(() => statGroupDefinitions.map(group => ({
   ...group,
-  stats: detailedStats.value.filter(stat => (group.labels as readonly string[]).includes(stat.label)),
+  stats: detailedStats.value.filter((stat, index, rows) => (group.labels as readonly string[]).includes(stat.label)
+    && rows.findIndex(row => row.label === stat.label) === index),
 })))
-const visibleDetailedStatGroups = computed(() => activeStatsGroup.value === 'all'
-  ? detailedStatGroups.value
-  : detailedStatGroups.value.filter(group => group.code === activeStatsGroup.value))
 const formMatches = computed(() => {
   const matches = profile.value?.donutStats?.form ?? []
   return matches.filter(match => typeof match.elo === 'number').slice(-formRange.value)
@@ -418,7 +415,6 @@ const selectedClutchStats = computed(() => {
 function openStatsGroup(group: string) {
   activeStatsGroup.value = group
   activeStatsSection.value = 'advanced'
-  nextTick(() => { if (statsDetails.value) statsDetails.value.open = true })
 }
 
 const friendshipLabel = computed(() => {
@@ -980,27 +976,7 @@ watch(nickname, loadProfile, { immediate: true })
       </section>
 
       <section v-if="activeStatsSection === 'advanced' && profile.donutStats" class="mt-4">
-        <AdvancedPerformance :stats="profile.donutStats" />
-        <details ref="statsDetails" class="profile-stats-details"><summary><span>Все показатели</span><small>Открыть подробную статистику по категориям</small></summary>
-        <div class="profile-stat-group-filter" role="group" aria-label="Фильтр групп показателей">
-          <button type="button" :aria-pressed="activeStatsGroup === 'all'" :class="{ 'is-active': activeStatsGroup === 'all' }" @click="activeStatsGroup = 'all'">Все показатели</button>
-          <button v-for="group in detailedStatGroups" :key="group.code" type="button" :aria-pressed="activeStatsGroup === group.code" :class="{ 'is-active': activeStatsGroup === group.code }" @click="activeStatsGroup = group.code">{{ group.title }}</button>
-        </div>
-        <div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        <section v-for="group in visibleDetailedStatGroups" :key="group.code" class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700/70 dark:bg-slate-900/70">
-          <header class="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-700/70">
-            <div><div class="font-mono text-[9px] font-bold tracking-[0.16em] text-amber-600 dark:text-amber-300">{{ group.code }}</div><h3 class="mt-1 text-sm font-bold text-slate-800 dark:text-slate-100">{{ group.title }}</h3></div>
-            <span class="rounded-lg bg-slate-100 p-2 text-slate-500 dark:bg-slate-800 dark:text-slate-300"><Target :size="15" /></span>
-          </header>
-          <div class="grid grid-cols-1 divide-y divide-slate-100 px-4 dark:divide-slate-800 sm:grid-cols-2 sm:divide-y-0 sm:gap-x-5">
-            <article v-for="stat in group.stats" :key="stat.label" class="flex min-h-[58px] items-center justify-between gap-3 border-b border-slate-100 py-2.5 last:border-0 dark:border-slate-800 sm:[&:nth-last-child(-n+2)]:border-0">
-              <div class="min-w-0"><div class="truncate text-[11px] font-medium text-slate-600 dark:text-slate-300">{{ stat.label }}</div><div class="mt-0.5 truncate text-[9px] text-slate-400 dark:text-slate-500">{{ stat.note }}</div></div>
-              <strong class="shrink-0 font-mono text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-100">{{ stat.value }}</strong>
-            </article>
-          </div>
-        </section>
-      </div>
-        </details>
+        <AdvancedPerformance v-model:group="activeStatsGroup" :stats="profile.donutStats" :groups="detailedStatGroups" />
       </section>
       <div v-if="activeStatsSection === 'advanced' && !profile.donutStats" class="profile-statistics-empty mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center dark:border-slate-700 dark:bg-slate-900/50">
         <span class="mx-auto grid h-11 w-11 place-items-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-300/10 dark:text-amber-200"><Activity :size="19" /></span>

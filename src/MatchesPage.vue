@@ -151,7 +151,7 @@ onUnmounted(() => { if (timer) clearInterval(timer); window.removeEventListener(
     <Transition name="profile-content" mode="out-in">
       <PageLoader v-if="loading" key="loading" :message="`Загружаем ${mode} матчи…`" />
       <div v-else-if="error" key="error" class="admin-error" role="alert"><strong>Не удалось загрузить матчи</strong><span>{{ error }}</span><button class="friend-action" type="button" @click="load()">Повторить</button></div>
-      <div v-else-if="matches.length" :key="`${mode}-${page}`" class="donut-match-groups">
+      <div v-else-if="matches.length" :key="mode" class="donut-match-groups">
         <section v-for="group in matchGroups" :key="group.key" class="donut-match-group" :aria-label="group.title">
           <div class="donut-group-heading"><span v-if="group.key === 'live'" class="donut-group-live-dot" aria-hidden="true"></span><h3>{{ group.title }}</h3><span class="donut-group-line" aria-hidden="true"></span></div>
           <div class="donut-match-grid">
