@@ -19,8 +19,9 @@ const matchesError = ref('')
 const finishedMatchesCount = ref<number | null>(null)
 
 const onlinePlayersCount = computed(() => {
-  if (!servers.value.length || servers.value.some(server => server.playersOnline === null)) return null
-  return servers.value.reduce((total, server) => total + (server.playersOnline ?? 0), 0)
+  const availableServers = servers.value.filter(server => server.playersOnline !== null)
+  if (!availableServers.length) return null
+  return availableServers.reduce((total, server) => total + (server.playersOnline ?? 0), 0)
 })
 
 const summaryStats = computed(() => [
@@ -34,7 +35,7 @@ const summaryStats = computed(() => [
   {
     label: 'Игроки онлайн',
     value: onlinePlayersCount.value?.toLocaleString('ru-RU') ?? '—',
-    note: 'на всех игровых серверах',
+    note: 'на доступных игровых серверах',
     icon: Users,
   },
 ])
