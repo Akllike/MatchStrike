@@ -18,7 +18,6 @@ import {
   PanelLeftOpen,
   RefreshCw,
   Settings,
-  Shield,
   ShieldCheck,
   Sun,
   UserPlus,
@@ -27,6 +26,7 @@ import {
   X,
 } from '@lucide/vue'
 import { ApiRequestError, clearAppNotifications, getAppNotifications, getCurrentUser, getNotificationSettings, loginAccount, logoutAccount, markAllAppNotificationsRead, markAppNotificationRead, registerAccount, savePushSubscription } from './api'
+import BrandMark from './components/BrandMark.vue'
 import type { AppNotification, AuthUser, LoginPayload, NotificationSettings, RegisterPayload } from './api'
 import { adminLandingPath } from './adminAccess'
 
@@ -759,7 +759,7 @@ onBeforeUnmount(() => {
     <aside id="site-sidebar" ref="sidebar" class="sidebar" :role="mobileMenuOpen ? 'dialog' : undefined" :aria-modal="mobileMenuOpen ? 'true' : undefined" :aria-label="mobileMenuOpen ? 'Навигация' : undefined">
       <div class="sidebar-brand">
         <RouterLink class="brand" to="/" aria-label="MatchStrike — главная" @click="closeMobileMenu(false)">
-          <span class="brand-mark"><Shield :size="19" :stroke-width="2.2" /></span>
+          <BrandMark />
           <span class="brand-name">MATCH<span>STRIKE</span><small>CS COMMUNITY</small></span>
         </RouterLink>
         <button
@@ -823,7 +823,7 @@ onBeforeUnmount(() => {
       <header class="topbar">
         <div class="mobile-header">
           <button ref="mobileMenuToggle" class="mobile-menu-toggle" type="button" :aria-expanded="mobileMenuOpen" aria-controls="site-sidebar" aria-label="Открыть меню" title="Открыть меню" @click="openMobileMenu"><Menu :size="21" /></button>
-          <RouterLink class="mobile-header-brand" to="/" aria-label="MatchStrike — главная"><span class="brand-mark"><Shield :size="17" :stroke-width="2.2" /></span><span>Match<span>Strike</span></span></RouterLink>
+          <RouterLink class="mobile-header-brand" to="/" aria-label="MatchStrike — главная"><BrandMark /></RouterLink>
         </div>
         <div class="topbar-label"><span class="topbar-mark"></span> ИГРОВОЕ СООБЩЕСТВО <span class="topbar-divider">/</span> CS</div>
         <div class="topbar-actions">

@@ -1,3 +1,5 @@
+import { apiFetch } from './apiTransport.mjs'
+
 const apiBaseUrl = '/api/v1'
 
 export type AdminRole = 'moderator' | 'administrator' | 'high_administrator' | 'developer'
@@ -381,7 +383,7 @@ export interface WarPlayerProfile {
   losses?: number
   elo?: number
   level?: number
-  avg_kills_per_match?: number
+  avg_kills_per_match?: number | null
   kills?: number
   deaths?: number
   headshots?: number
@@ -534,7 +536,7 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 async function getCsrfToken(): Promise<string> {
-  const response = await fetch(`${apiBaseUrl}/auth/csrf`, {
+  const response = await apiFetch(`${apiBaseUrl}/auth/csrf`, {
     credentials: 'include',
     headers: { Accept: 'application/json' },
   })
@@ -545,7 +547,7 @@ async function getCsrfToken(): Promise<string> {
 
 async function mutateJson<T>(url: string, method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', payload?: unknown): Promise<T> {
   const csrfToken = await getCsrfToken()
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method,
     credentials: 'include',
     headers: {
@@ -572,12 +574,12 @@ function ticketsUrl(admin: boolean): string {
 }
 
 export async function getTickets(admin: boolean): Promise<Ticket[]> {
-  const response = await fetch(ticketsUrl(admin), { credentials: 'include', headers: { Accept: 'application/json' } })
+  const response = await apiFetch(ticketsUrl(admin), { credentials: 'include', headers: { Accept: 'application/json' } })
   return (await readJson<{ tickets: Ticket[] }>(response)).tickets
 }
 
 export async function getTicket(admin: boolean, id: number): Promise<TicketConversation> {
-  const response = await fetch(`${ticketsUrl(admin)}/${id}`, { credentials: 'include', headers: { Accept: 'application/json' } })
+  const response = await apiFetch(`${ticketsUrl(admin)}/${id}`, { credentials: 'include', headers: { Accept: 'application/json' } })
   return readJson<TicketConversation>(response)
 }
 
@@ -598,7 +600,7 @@ export function setTicketStatus(id: number, status: Ticket['status']): Promise<T
 }
 
 export async function getApiHealth(): Promise<ApiHealth> {
-  const response = await fetch(`${apiBaseUrl}/health`, {
+  const response = await apiFetch(`${apiBaseUrl}/health`, {
     headers: { Accept: 'application/json' },
   })
 
@@ -619,7 +621,7 @@ export async function loginAccount(payload: LoginPayload): Promise<LoginResponse
 }
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
-  const response = await fetch(`${apiBaseUrl}/auth/me`, {
+  const response = await apiFetch(`${apiBaseUrl}/auth/me`, {
     credentials: 'include',
     headers: { Accept: 'application/json' },
   })
@@ -631,7 +633,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
 }
 
 export async function getAdminOverview(): Promise<AdminOverviewStats> {
-  const response = await fetch(`${apiBaseUrl}/admin/overview`, {
+  const response = await apiFetch(`${apiBaseUrl}/admin/overview`, {
     credentials: 'include',
     headers: { Accept: 'application/json' },
   })
@@ -647,7 +649,7 @@ export async function getAdminUsers(
   if (search.trim()) params.set('search', search.trim())
   if (role) params.set('role', role)
   const query = params.size > 0 ? `?${params.toString()}` : ''
-  const response = await fetch(`${apiBaseUrl}/admin/users${query}`, {
+  const response = await apiFetch(`${apiBaseUrl}/admin/users${query}`, {
     credentials: 'include',
     headers: { Accept: 'application/json' },
   })
@@ -656,7 +658,7 @@ export async function getAdminUsers(
 }
 
 export async function getAdminServers(): Promise<AdminGameServer[]> {
-  const response = await fetch(`${apiBaseUrl}/admin/servers`, {
+  const response = await apiFetch(`${apiBaseUrl}/admin/servers`, {
     credentials: 'include',
     headers: { Accept: 'application/json' },
   })
@@ -689,18 +691,18 @@ export async function disconnectDonutMatch(serverId: number): Promise<void> {
 export async function getGameMatches(mode: 'War' | 'Mix' | null, page = 1): Promise<GameMatchesPage> {
   const params = new URLSearchParams({ page: String(page) })
   if (mode) params.set('mode', mode)
-  return readJson<GameMatchesPage>(await fetch(`${apiBaseUrl}/matches?${params}`, { headers: { Accept: 'application/json' } }))
+  return readJson<GameMatchesPage>(await apiFetch(`${apiBaseUrl}/matches?${params}`, { headers: { Accept: 'application/json' } }))
 }
 
 export async function getGameMatch(id: string): Promise<GameMatchDetails> {
-  const data = await readJson<{ match: GameMatchDetails }>(await fetch(`${apiBaseUrl}/matches/${encodeURIComponent(id)}`, { cache: 'no-store', headers: { Accept: 'application/json' } }))
+  const data = await readJson<{ match: GameMatchDetails }>(await apiFetch(`${apiBaseUrl}/matches/${encodeURIComponent(id)}`, { cache: 'no-store', headers: { Accept: 'application/json' } }))
   return data.match
 }
 
 export async function getBans(page = 1, search = '', status: BanStatusFilter = 'all'): Promise<SourceBansPage> {
   const params = new URLSearchParams({ page: String(page), status })
   if (search.trim()) params.set('search', search.trim())
-  const response = await fetch(`${apiBaseUrl}/bans?${params}`, {
+  const response = await apiFetch(`${apiBaseUrl}/bans?${params}`, {
     cache: 'no-store',
     headers: { Accept: 'application/json' },
   })
@@ -710,7 +712,7 @@ export async function getBans(page = 1, search = '', status: BanStatusFilter = '
 export async function getAdminBans(page = 1, search = '', status: AdminBanStatusFilter = 'all'): Promise<AdminSourceBansPage> {
   const params = new URLSearchParams({ page: String(page), status })
   if (search.trim()) params.set('search', search.trim())
-  const response = await fetch(`${apiBaseUrl}/admin/bans?${params}`, {
+  const response = await apiFetch(`${apiBaseUrl}/admin/bans?${params}`, {
     credentials: 'include',
     cache: 'no-store',
     headers: { Accept: 'application/json' },
@@ -762,7 +764,7 @@ export async function getAdminServerIntegrationData(
   serverId: number,
   integration: AdminServerIntegration,
 ): Promise<AdminIntegrationRecord[]> {
-  const response = await fetch(`${apiBaseUrl}/admin/servers/${serverId}/integrations/${integration}`, {
+  const response = await apiFetch(`${apiBaseUrl}/admin/servers/${serverId}/integrations/${integration}`, {
     credentials: 'include',
     headers: { Accept: 'application/json' },
   })
@@ -833,7 +835,7 @@ export async function logoutAccount(): Promise<void> {
 
 export async function getPlayerMatches(nickname: string, page = 1): Promise<PlayerMatchesPage> {
   const params = new URLSearchParams({ page: String(page) })
-  const response = await fetch(`${apiBaseUrl}/users/${encodeURIComponent(nickname)}/matches?${params}`, {
+  const response = await apiFetch(`${apiBaseUrl}/users/${encodeURIComponent(nickname)}/matches?${params}`, {
     credentials: 'include',
     headers: { Accept: 'application/json' },
   })
@@ -841,7 +843,7 @@ export async function getPlayerMatches(nickname: string, page = 1): Promise<Play
 }
 
 export async function getPlayerProfile(nickname: string): Promise<PlayerProfile> {
-  const response = await fetch(`${apiBaseUrl}/users/${encodeURIComponent(nickname)}`, {
+  const response = await apiFetch(`${apiBaseUrl}/users/${encodeURIComponent(nickname)}`, {
     credentials: 'include',
     headers: { Accept: 'application/json' },
   })
@@ -850,7 +852,7 @@ export async function getPlayerProfile(nickname: string): Promise<PlayerProfile>
 }
 
 export async function getFriends(): Promise<FriendSummary[]> {
-  const response = await fetch(`${apiBaseUrl}/me/friends`, {
+  const response = await apiFetch(`${apiBaseUrl}/me/friends`, {
     credentials: 'include',
     headers: { Accept: 'application/json' },
   })
@@ -859,7 +861,7 @@ export async function getFriends(): Promise<FriendSummary[]> {
 }
 
 export async function getIncomingFriendRequests(): Promise<IncomingFriendRequest[]> {
-  const response = await fetch(`${apiBaseUrl}/me/friend-requests`, {
+  const response = await apiFetch(`${apiBaseUrl}/me/friend-requests`, {
     credentials: 'include',
     headers: { Accept: 'application/json' },
   })
@@ -877,7 +879,7 @@ export function sendAdminBroadcastNotification(payload: {
 }
 
 export async function getAppNotifications(): Promise<{ notifications: AppNotification[]; unreadCount: number }> {
-  const response = await fetch(`${apiBaseUrl}/me/notifications`, {
+  const response = await apiFetch(`${apiBaseUrl}/me/notifications`, {
     credentials: 'include',
     headers: { Accept: 'application/json' },
   })
@@ -885,7 +887,7 @@ export async function getAppNotifications(): Promise<{ notifications: AppNotific
 }
 
 export async function getNotificationSettings(): Promise<NotificationSettings> {
-  const response = await fetch(`${apiBaseUrl}/me/notification-settings`, { credentials: 'include', headers: { Accept: 'application/json' } })
+  const response = await apiFetch(`${apiBaseUrl}/me/notification-settings`, { credentials: 'include', headers: { Accept: 'application/json' } })
   return readJson<NotificationSettings>(response)
 }
 
@@ -925,7 +927,7 @@ export async function acceptFriendRequest(requestId: number): Promise<void> {
 
 export async function rejectFriendRequest(requestId: number): Promise<void> {
   const csrfToken = await getCsrfToken()
-  const response = await fetch(`${apiBaseUrl}/me/friend-requests/${requestId}`, {
+  const response = await apiFetch(`${apiBaseUrl}/me/friend-requests/${requestId}`, {
     method: 'DELETE',
     credentials: 'include',
     headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken },
@@ -935,7 +937,7 @@ export async function rejectFriendRequest(requestId: number): Promise<void> {
 
 export async function removeFriendFromList(nickname: string): Promise<void> {
   const csrfToken = await getCsrfToken()
-  const response = await fetch(`${apiBaseUrl}/me/friends/${encodeURIComponent(nickname)}`, {
+  const response = await apiFetch(`${apiBaseUrl}/me/friends/${encodeURIComponent(nickname)}`, {
     method: 'DELETE',
     credentials: 'include',
     headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken },
@@ -968,7 +970,7 @@ export async function updateProfileMedia(files: { avatar?: File; cover?: File })
   if (files.avatar) formData.append('avatar', files.avatar)
   if (files.cover) formData.append('cover', files.cover)
 
-  const response = await fetch(`${apiBaseUrl}/me/profile-media`, {
+  const response = await apiFetch(`${apiBaseUrl}/me/profile-media`, {
     method: 'POST',
     credentials: 'include',
     headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken },
@@ -994,7 +996,7 @@ export async function updateSocialLinks(socialLinks: Partial<Record<SocialPlatfo
 }
 
 export async function getAccountSessions(): Promise<AccountSession[]> {
-  const response = await fetch(`${apiBaseUrl}/me/sessions`, {
+  const response = await apiFetch(`${apiBaseUrl}/me/sessions`, {
     credentials: 'include',
     headers: { Accept: 'application/json' },
   })
@@ -1035,7 +1037,7 @@ export async function reportPlayer(
 }
 
 export async function getPublicServers(): Promise<PublicGameServer[]> {
-  const response = await fetch(`${apiBaseUrl}/servers`, {
+  const response = await apiFetch(`${apiBaseUrl}/servers`, {
     headers: { Accept: 'application/json' },
   })
   const data = await readJson<{ servers: PublicGameServer[] }>(response)
@@ -1045,7 +1047,7 @@ export async function getPublicServers(): Promise<PublicGameServer[]> {
 export async function getStatsPlayers(page = 1, search = ''): Promise<StatsPlayersPage> {
   const params = new URLSearchParams({ page: String(page) })
   if (search.trim()) params.set('search', search.trim())
-  const response = await fetch(`${apiBaseUrl}/stats/players?${params.toString()}`, {
+  const response = await apiFetch(`${apiBaseUrl}/stats/players?${params.toString()}`, {
     headers: { Accept: 'application/json' },
   })
   return readJson<StatsPlayersPage>(response)
@@ -1054,14 +1056,14 @@ export async function getStatsPlayers(page = 1, search = ''): Promise<StatsPlaye
 export async function getDonutStatsPlayers(page = 1, search = ''): Promise<DonutStatsLeaderboardPage> {
   const params = new URLSearchParams({ page: String(page) })
   if (search.trim()) params.set('search', search.trim())
-  const response = await fetch(`${apiBaseUrl}/donutstats/players?${params.toString()}`, {
+  const response = await apiFetch(`${apiBaseUrl}/donutstats/players?${params.toString()}`, {
     headers: { Accept: 'application/json' },
   })
   return readJson<DonutStatsLeaderboardPage>(response)
 }
 
 export async function getAdminStatisticsSource(): Promise<StatisticsSource> {
-  const response = await fetch(`${apiBaseUrl}/admin/statistics/source`, {
+  const response = await apiFetch(`${apiBaseUrl}/admin/statistics/source`, {
     credentials: 'include',
     headers: { Accept: 'application/json' },
   })

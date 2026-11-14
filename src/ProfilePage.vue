@@ -132,9 +132,9 @@ const stats = computed(() => {
     { label: 'ELO', value: war?.elo ?? '—', note: eloLevel > 0 ? `уровень ${eloLevel}` : 'War-рейтинг', icon: Trophy, level: eloLevel },
     { label: 'Матчи', value: matchStats?.matches ?? war?.matches ?? '—', note: 'сыграно матчей', icon: Activity, level: 0 },
     { label: 'K/D', value: hasMatchStats ? (deaths > 0 ? (kills / deaths).toFixed(2) : kills.toFixed(2)) : values?.kdr.toFixed(2) ?? '—', note: 'убийства / смерти', icon: Target, level: 0 },
-    { label: 'HS%', value: hasMatchStats && kills > 0 ? `${Math.round(headshots / kills * 100)}%` : '—', note: 'хедшоты от убийств', icon: Target, level: 0 },
+    { label: 'HS%', value: hasMatchStats && kills > 0 ? `${(headshots / kills * 100).toFixed(1)}%` : '—', note: 'хедшоты от убийств', icon: Target, level: 0 },
     { label: 'ADR', value: hasMatchStats && rounds > 0 ? (totals.damage / rounds).toFixed(1) : '—', note: 'средний урон за раунд', icon: Activity, level: 0 },
-    { label: 'AVG', value: war?.avg_kills_per_match ?? '—', note: 'убийств за War-матч', icon: Activity, level: 0 },
+    { label: 'AVG', value: war?.avg_kills_per_match?.toFixed(1) ?? '—', note: 'убийств за War-матч', icon: Activity, level: 0 },
   ]
 })
 const matchActivityWeeks = computed(() => {
@@ -312,7 +312,7 @@ const detailedStats = computed(() => {
     else if (label === 'War ELO') display = war?.elo ?? '—'
     else if (label === 'War уровень') display = war?.level ?? '—'
     else if (label === 'War победы / поражения') display = war ? `${war.wins ?? 0} / ${war.losses ?? 0}` : '—'
-    else if (label === 'War среднее убийств') display = war?.avg_kills_per_match ?? '—'
+    else if (label === 'War среднее убийств') display = war?.avg_kills_per_match?.toFixed(1) ?? '—'
     else if (label === 'War убийства / смерти') display = war ? `${war.kills ?? 0} / ${war.deaths ?? 0}` : '—'
     else if (label === 'War хедшоты') display = war?.headshots ?? '—'
     else if (label === 'War ассисты') display = war?.assists ?? '—'
@@ -1016,7 +1016,7 @@ watch(nickname, loadProfile, { immediate: true })
         <div class="mb-3 flex items-end justify-between gap-3"><div><div class="section-kicker">CLUTCH PERFORMANCE</div><h2 id="profile-clutches-title" class="text-lg font-bold tracking-tight text-slate-800 dark:text-slate-100">Клатчи 1vX</h2></div><span class="font-mono text-[10px] text-slate-400">WINS / ATTEMPTS</span></div>
         <div v-if="profile.donutStats?.clutchesByX.some(item => item.attempts > 0)" class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           <button v-for="clutch in profile.donutStats.clutchesByX" :key="clutch.opponents" class="rounded-xl border p-3 text-left shadow-sm transition-colors" :class="selectedClutchOpponents === clutch.opponents ? 'border-amber-400 bg-amber-50 dark:border-amber-300/60 dark:bg-amber-300/10' : 'border-slate-200 bg-white dark:border-slate-700/70 dark:bg-slate-900/70'" type="button" :aria-pressed="selectedClutchOpponents === clutch.opponents" @click="selectedClutchOpponents = clutch.opponents">
-            <div class="flex items-center justify-between"><span class="font-mono text-xs font-bold text-slate-500 dark:text-slate-400">1v{{ clutch.opponents }}</span><span class="font-mono text-[10px] font-semibold text-amber-600 dark:text-amber-300">{{ clutch.attempts ? `${Math.round(clutch.wins / clutch.attempts * 100)}%` : '—' }}</span></div>
+            <div class="flex items-center justify-between"><span class="font-mono text-xs font-bold text-slate-500 dark:text-slate-400">1v{{ clutch.opponents }}</span><span class="font-mono text-[10px] font-semibold text-amber-600 dark:text-amber-300">{{ clutch.attempts ? `${(clutch.wins / clutch.attempts * 100).toFixed(1)}%` : '—' }}</span></div>
             <strong class="mt-2 block font-mono text-xl font-semibold tabular-nums text-slate-900 dark:text-white">{{ clutch.wins }}<span class="mx-1 text-slate-300 dark:text-slate-600">/</span><span class="text-sm text-slate-500">{{ clutch.attempts }}</span></strong>
             <div class="mt-2 h-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div class="h-full rounded-full bg-amber-400" :style="{ width: `${clutch.attempts ? clutch.wins / clutch.attempts * 100 : 0}%` }"></div></div>
           </button>

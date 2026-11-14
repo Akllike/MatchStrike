@@ -15,7 +15,14 @@ export default defineConfig({
       injectRegister: false,
       manifest: false,
       injectManifest: {
-        globPatterns: ['**/*.{js,css,html,svg,webmanifest}'],
+        globPatterns: [
+          '**/*.{js,css,html,svg,webmanifest}',
+          'icons/favicon-*.ico',
+          'icons/symbols/{original,black}/symbol-192.png',
+          'icons/symbols/original/app-icon-{180,192,512}.png',
+          'icons/symbols/white/symbol-96.png',
+          'other/cat-cat-dance.gif',
+        ],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
     }),

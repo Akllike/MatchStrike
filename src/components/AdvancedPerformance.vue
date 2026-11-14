@@ -41,7 +41,7 @@ const multikills = computed(() => [
   <div class="advanced-dashboard">
     <div class="advanced-lenses">
       <button v-for="lens in lenses" :key="lens.id" type="button" :aria-pressed="active === lens.id" :style="{ '--lens-color': lens.color }" @click="active = lens.id">
-        <component :is="lens.icon" :size="17" /><span>{{ lens.title }}</span><strong>{{ lens.denominator ? `${lens.rate.toFixed(0)}%` : '—' }}</strong>
+        <component :is="lens.icon" :size="17" /><span>{{ lens.title }}</span><strong>{{ lens.denominator ? `${lens.rate.toFixed(1)}%` : '—' }}</strong>
       </button>
     </div>
     <section class="advanced-focus" :style="{ '--lens-color': selected.color }" aria-live="polite">

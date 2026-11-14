@@ -76,9 +76,9 @@ function playerDonutStat(player: MatchPlayer, field: 'headshots' | 'assists' | '
   const kills = Number(stats?.kills ?? player.kills ?? 0)
   const deaths = Number(stats?.deaths ?? player.deaths ?? 0)
   if (field === 'kd') return deaths > 0 ? (kills / deaths).toFixed(2) : kills > 0 ? kills.toFixed(2) : '—'
-  if (field === 'hsPercent') return kills > 0 ? `${Math.round(Number(stats?.headshots ?? 0) / kills * 100)}%` : '—'
+  if (field === 'hsPercent') return kills > 0 ? `${(Number(stats?.headshots ?? 0) / kills * 100).toFixed(1)}%` : '—'
   if (field === 'adr') return rounds > 0 ? (Number(stats?.damage ?? 0) / rounds).toFixed(1) : '—'
-  if (field === 'kast') return rounds > 0 ? `${Math.round(Number(stats?.kastRounds ?? 0) / rounds * 100)}%` : '—'
+  if (field === 'kast') return rounds > 0 ? `${(Number(stats?.kastRounds ?? 0) / rounds * 100).toFixed(1)}%` : '—'
   if (!stats) return '—'
   const metricField = ({ entry: 'openingKills', triples: 'tripleKills', quadros: 'quadKills', aces: 'aceKills' } as const)[field as 'entry' | 'triples' | 'quadros' | 'aces'] ?? field
   const value = stats[metricField]

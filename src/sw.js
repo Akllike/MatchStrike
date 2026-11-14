@@ -27,8 +27,8 @@ self.addEventListener('push', (event) => {
   const title = payload.title || 'MatchStrike'
   const options = {
     body: payload.body || 'У вас новое уведомление.',
-    icon: '/icons/matchstrike.svg',
-    badge: '/icons/matchstrike.svg',
+    icon: '/icons/symbols/original/app-icon-192.png',
+    badge: '/icons/symbols/white/symbol-96.png',
     tag: payload.tag || 'matchstrike-notification',
     data: { url: payload.url || '/' },
   }
