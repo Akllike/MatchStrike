@@ -87,7 +87,7 @@ onUnmounted(() => {
 .player-name>small { font-size:9px; color:var(--muted); }
 .player-rating { display:flex; align-items:center; gap:7px; flex-shrink:0; color:var(--text); font-family:inherit; font-size:13px; font-weight:400; font-variant-numeric:normal; letter-spacing:0; line-height:1.3; }
 .player-rating img { width:28px; height:28px; }
-.player-rating span { display:grid; gap:3px; text-align:right; }
+.player-rating span { display:flex; align-items:baseline; gap:4px; white-space:nowrap; }
 .player-rating small { font-size:8px; color:var(--muted); letter-spacing:0; }
 .player-kick { display:grid; place-items:center; padding:6px; border:0; border-radius:7px; background:var(--line-soft); color:var(--muted); cursor:pointer; }
 .player-kick:hover { color:#ee7575; background:#ee757515; }
