@@ -766,7 +766,7 @@ onBeforeUnmount(() => {
           class="sidebar-collapse-toggle"
           type="button"
           :aria-label="sidebarCollapsed ? 'Развернуть меню' : 'Свернуть меню'"
-          :title="sidebarCollapsed ? 'Развернуть меню' : 'Свернуть меню'"
+          v-tooltip="sidebarCollapsed ? 'Развернуть меню' : 'Свернуть меню'"
           :aria-expanded="!sidebarCollapsed"
           aria-controls="primary-navigation"
           @click="toggleSidebar"
@@ -774,7 +774,7 @@ onBeforeUnmount(() => {
           <PanelLeftOpen v-if="sidebarCollapsed" :size="17" />
           <PanelLeftClose v-else :size="17" />
         </button>
-        <button ref="mobileMenuClose" class="mobile-menu-close" type="button" aria-label="Закрыть меню" title="Закрыть меню" @click="closeMobileMenu()"><X :size="20" /></button>
+        <button ref="mobileMenuClose" class="mobile-menu-close" type="button" aria-label="Закрыть меню" v-tooltip="'Закрыть меню'" @click="closeMobileMenu()"><X :size="20" /></button>
       </div>
 
       <div class="sidebar-caption">СООБЩЕСТВО</div>
@@ -785,7 +785,7 @@ onBeforeUnmount(() => {
           :to="item.to"
           class="nav-link"
           :aria-label="item.label"
-          :title="sidebarCollapsed ? item.label : undefined"
+          v-tooltip="sidebarCollapsed ? item.label : undefined"
           active-class="is-active"
           @click="closeMobileMenu(false)"
         >
@@ -801,7 +801,7 @@ onBeforeUnmount(() => {
           class="nav-link"
           :class="{ 'is-active': route.path.startsWith('/adminpanel') }"
           aria-label="Админ панель"
-          :title="sidebarCollapsed ? 'Админ панель' : undefined"
+          v-tooltip="sidebarCollapsed ? 'Админ панель' : undefined"
           @click="closeMobileMenu(false)"
         >
           <span class="nav-icon"><ShieldCheck :size="18" :stroke-width="1.8" /></span>
@@ -810,7 +810,7 @@ onBeforeUnmount(() => {
       </nav>
 
       <div class="sidebar-bottom">
-        <button class="help-link" type="button" :aria-label="sidebarCollapsed ? 'Помощь' : undefined" :title="sidebarCollapsed ? 'Помощь' : undefined" @click="closeMobileMenu(false); authMode = 'help'">
+        <button class="help-link" type="button" :aria-label="sidebarCollapsed ? 'Помощь' : undefined" v-tooltip="sidebarCollapsed ? 'Помощь' : undefined" @click="closeMobileMenu(false); authMode = 'help'">
           <span class="nav-icon"><CircleHelp :size="18" :stroke-width="1.8" /></span>
           <span class="help-label">Помощь</span>
           <ArrowUpRight class="help-arrow" :size="14" />
@@ -822,7 +822,7 @@ onBeforeUnmount(() => {
     <main class="main-content">
       <header class="topbar">
         <div class="mobile-header">
-          <button ref="mobileMenuToggle" class="mobile-menu-toggle" type="button" :aria-expanded="mobileMenuOpen" aria-controls="site-sidebar" aria-label="Открыть меню" title="Открыть меню" @click="openMobileMenu"><Menu :size="21" /></button>
+          <button ref="mobileMenuToggle" class="mobile-menu-toggle" type="button" :aria-expanded="mobileMenuOpen" aria-controls="site-sidebar" aria-label="Открыть меню" v-tooltip="'Открыть меню'" @click="openMobileMenu"><Menu :size="21" /></button>
           <RouterLink class="mobile-header-brand" to="/" aria-label="MatchStrike — главная"><BrandMark /></RouterLink>
         </div>
         <div class="topbar-label"><span class="topbar-mark"></span> ИГРОВОЕ СООБЩЕСТВО <span class="topbar-divider">/</span> CS</div>
@@ -831,7 +831,7 @@ onBeforeUnmount(() => {
             class="theme-toggle flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-sky-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             type="button"
             :aria-label="darkTheme ? 'Включить светлую тему' : 'Включить тёмную тему'"
-            :title="darkTheme ? 'Включить светлую тему' : 'Включить тёмную тему'"
+            v-tooltip="darkTheme ? 'Включить светлую тему' : 'Включить тёмную тему'"
             :aria-pressed="darkTheme"
             @click="toggleTheme"
           >
@@ -844,7 +844,7 @@ onBeforeUnmount(() => {
           </template>
           <template v-else>
           <div ref="notificationsWrap" class="notifications-wrap">
-            <button class="notifications-button" type="button" :aria-expanded="notificationsOpen" aria-haspopup="dialog" :aria-label="unreadNotificationCount ? `Уведомления, непрочитанных: ${unreadNotificationCount}` : 'Уведомления'" :title="unreadNotificationCount ? `Непрочитанных уведомлений: ${unreadNotificationCount}` : 'Уведомления'" @click="toggleNotifications">
+            <button class="notifications-button" type="button" :aria-expanded="notificationsOpen" aria-haspopup="dialog" :aria-label="unreadNotificationCount ? `Уведомления, непрочитанных: ${unreadNotificationCount}` : 'Уведомления'" v-tooltip="unreadNotificationCount ? `Непрочитанных уведомлений: ${unreadNotificationCount}` : 'Уведомления'" @click="toggleNotifications">
               <Bell :size="18" />
               <span v-if="unreadNotificationCount > 0" class="notification-unread-indicator" aria-hidden="true">
                 <span class="notification-ping motion-safe:animate-ping"></span>
@@ -853,7 +853,7 @@ onBeforeUnmount(() => {
             </button>
             <Transition name="account-menu">
               <section v-if="notificationsOpen" class="notifications-panel" role="dialog" aria-label="Уведомления">
-                <header class="notifications-panel-heading"><h2>Уведомления</h2><span class="notifications-heading-actions"><button v-if="unreadNotificationCount > 0" type="button" @click="markAllNotificationsRead">Прочитать все</button><button v-if="notifications.length" class="notifications-clear-button" type="button" aria-label="Очистить уведомления" title="Очистить уведомления" :disabled="notificationsClearBusy" @click="clearNotifications"><X :size="15" /></button></span></header>
+                <header class="notifications-panel-heading"><h2>Уведомления</h2><span class="notifications-heading-actions"><button v-if="unreadNotificationCount > 0" type="button" @click="markAllNotificationsRead">Прочитать все</button><button v-if="notifications.length" class="notifications-clear-button" type="button" aria-label="Очистить уведомления" v-tooltip="'Очистить уведомления'" :disabled="notificationsClearBusy" @click="clearNotifications"><X :size="15" /></button></span></header>
                 <p v-if="notificationsLoading && !notifications.length" class="notifications-panel-message">Загружаем уведомления…</p>
                 <p v-else-if="notificationsError" class="notifications-panel-message" role="alert">{{ notificationsError }}</p>
                 <div v-else-if="notifications.length" class="notifications-list">
@@ -906,7 +906,7 @@ onBeforeUnmount(() => {
       <Transition name="modal">
         <div v-if="authMode" class="modal-backdrop" @click.self="closeDialog()" @keydown.esc="closeDialog()">
           <section class="info-dialog" :class="{ 'auth-two-factor-dialog': authMode === 'login' && twoFactorRequired }" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
-          <button v-if="authMode === 'login' && twoFactorRequired" class="dialog-close auth-step-back" type="button" aria-label="Назад к email и паролю" title="Назад к email и паролю" @click="backToCredentials"><ArrowLeft :size="18" /></button>
+          <button v-if="authMode === 'login' && twoFactorRequired" class="dialog-close auth-step-back" type="button" aria-label="Назад к email и паролю" v-tooltip="'Назад к email и паролю'" @click="backToCredentials"><ArrowLeft :size="18" /></button>
           <button class="dialog-close" type="button" aria-label="Закрыть" @click="closeDialog()"><X :size="18" /></button>
           <div class="section-kicker">MATCHSTRIKE / ACCOUNT</div>
           <h2 id="dialog-title">{{ authTitle }}</h2>
@@ -960,7 +960,7 @@ onBeforeUnmount(() => {
 
                 <label v-if="authMode === 'register'" class="auth-field">
                   <span>Никнейм</span>
-                  <input v-model.trim="authForm.nickname" class="auth-input" type="text" name="nickname" autocomplete="nickname" required minlength="2" maxlength="32" pattern="[\p{L}\p{N}_!?#@]+" title="Только буквы, цифры и символы _ ! ? # @. Без пробелов и ссылок." placeholder="Ваш никнейм" :aria-invalid="Boolean(fieldError('nickname'))" />
+                  <input v-model.trim="authForm.nickname" class="auth-input" type="text" name="nickname" autocomplete="nickname" required minlength="2" maxlength="32" pattern="[\p{L}\p{N}_!?#@]+" v-tooltip="'Только буквы, цифры и символы _ ! ? # @. Без пробелов и ссылок.'" placeholder="Ваш никнейм" :aria-invalid="Boolean(fieldError('nickname'))" />
                   <span v-if="fieldError('nickname')" class="field-error">{{ fieldError('nickname') }}</span>
                 </label>
 

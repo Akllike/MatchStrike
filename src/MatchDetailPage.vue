@@ -262,7 +262,7 @@ onUnmounted(() => {
         <div class="match-results">
           <div class="match-results-scroll" role="region" aria-label="Результаты игроков" tabindex="0">
             <table class="match-results-table">
-              <thead><tr><th scope="col">Игрок</th><th scope="col" title="Убийства">Убийства</th><th scope="col" title="Смерти">Смерти</th><th scope="col" title="Ассисты">A</th><th scope="col" title="Количество хедшотов">HS</th><th scope="col" title="Kills / Deaths">K/D</th><th scope="col" title="Доля убийств в голову">HS%</th><th scope="col" title="Средний урон за раунд">ADR</th><th scope="col" title="Общий урон">Урон</th><th scope="col" title="Entry-фраги">Entry</th><th scope="col" title="Трипл-киллы">3K</th><th scope="col" title="Квадро-киллы">4K</th><th scope="col" title="Эйсы">Ace</th></tr></thead>
+              <thead><tr><th scope="col">Игрок</th><th scope="col" v-tooltip="'Убийства'">Убийства</th><th scope="col" v-tooltip="'Смерти'">Смерти</th><th scope="col" v-tooltip="'Ассисты'">A</th><th scope="col" v-tooltip="'Количество хедшотов'">HS</th><th scope="col" v-tooltip="'Kills / Deaths'">K/D</th><th scope="col" v-tooltip="'Доля убийств в голову'">HS%</th><th scope="col" v-tooltip="'Средний урон за раунд'">ADR</th><th scope="col" v-tooltip="'Общий урон'">Урон</th><th scope="col" v-tooltip="'Entry-фраги'">Entry</th><th scope="col" v-tooltip="'Трипл-киллы'">3K</th><th scope="col" v-tooltip="'Квадро-киллы'">4K</th><th scope="col" v-tooltip="'Эйсы'">Ace</th></tr></thead>
               <tbody v-for="team in (match.scoreType === 'maps' ? resultTeams : teams)" :key="team.side">
                 <tr class="match-results-team"><th colspan="13" scope="rowgroup"><span class="match-results-side" :class="`is-${team.side.toLowerCase()}`">{{ team.side }}</span><strong>{{ team.name }}</strong><small>Сторона {{ team.side }} · игроков: {{ team.players.length }}</small></th></tr>
                 <tr v-for="(player, index) in team.players" :key="`${index}-${player.name}`">
@@ -284,7 +284,7 @@ onUnmounted(() => {
           <article v-for="team in teams" :key="team.side" class="match-roster">
             <div class="match-roster-heading"><div><span class="match-roster-mark" :class="`is-${team.side.toLowerCase()}`"><Shield :size="16" /></span><div><strong>{{ team.name }}</strong><span>СТОРОНА {{ team.side }}</span></div></div><small>{{ team.players.length }} ИГРОКОВ</small></div>
             <div v-if="team.players.length" class="match-player-table">
-              <div class="match-player-head"><span>ИГРОК</span><span title="Убийства">K</span><span title="Смерти">D</span><span title="Ассисты">A</span><span title="Хедшоты">HS</span><span title="Kills / Deaths">K/D</span><span title="Доля попаданий в голову">HS%</span><span title="Средний урон за раунд">ADR</span></div>
+              <div class="match-player-head"><span>ИГРОК</span><span v-tooltip="'Убийства'">K</span><span v-tooltip="'Смерти'">D</span><span v-tooltip="'Ассисты'">A</span><span v-tooltip="'Хедшоты'">HS</span><span v-tooltip="'Kills / Deaths'">K/D</span><span v-tooltip="'Доля попаданий в голову'">HS%</span><span v-tooltip="'Средний урон за раунд'">ADR</span></div>
               <div v-for="(player, index) in team.players" :key="`${index}-${player.name}`" class="match-player-row">
                 <div class="match-player-identity">
                   <img v-if="player.account?.avatarUrl" class="match-player-avatar" :src="player.account.avatarUrl" :alt="player.account.nickname" />

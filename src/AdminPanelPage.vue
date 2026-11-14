@@ -818,7 +818,7 @@ watch(section, (next, previous) => {
       </label>
       <div class="admin-user-search-actions">
         <button class="friend-action admin-user-search-submit" type="submit" :disabled="usersLoading"><Search :size="14" /> {{ usersLoading ? 'Ищем…' : 'Найти' }}</button>
-        <button class="friend-action admin-user-search-clear" type="button" aria-label="Сбросить поиск" title="Сбросить поиск" :disabled="usersLoading || (!usersSearch && !usersRoleFilter)" @click="clearUserSearch"><X :size="14" /></button>
+        <button class="friend-action admin-user-search-clear" type="button" aria-label="Сбросить поиск" v-tooltip="'Сбросить поиск'" :disabled="usersLoading || (!usersSearch && !usersRoleFilter)" @click="clearUserSearch"><X :size="14" /></button>
       </div>
     </form>
     <p v-if="usersSearchError" class="admin-error-inline" role="alert">{{ usersSearchError }}</p>
@@ -834,7 +834,7 @@ watch(section, (next, previous) => {
             <td><span class="admin-user-status" :class="{ 'is-blocked': user.isBlocked }">{{ user.isBlocked ? 'Заблокирован' : 'Активен' }}</span></td>
             <td>{{ formatDate(user.createdAt) }}</td>
             <td>{{ lastSeenLabel(user.lastSeenAt) }}</td>
-            <td><button class="friend-action admin-settings-button" type="button" :disabled="!canManageUser(user)" :title="canManageUser(user) ? 'Настройки пользователя' : 'Недостаточно прав для управления этим аккаунтом'" @click="openUserSettings(user)"><Settings :size="13" /> Настройки</button></td>
+            <td><button class="friend-action admin-settings-button" type="button" :disabled="!canManageUser(user)" v-tooltip="canManageUser(user) ? 'Настройки пользователя' : 'Недостаточно прав для управления этим аккаунтом'" @click="openUserSettings(user)"><Settings :size="13" /> Настройки</button></td>
           </tr>
         </tbody>
       </table>
@@ -859,7 +859,7 @@ watch(section, (next, previous) => {
               <span class="admin-server-address">{{ server.ip }}:{{ server.port }}</span>
             </div>
           </div>
-          <button class="admin-server-icon-button" type="button" :aria-label="refreshingServerId === server.id ? 'Обновление данных сервера' : 'Обновить данные сервера'" title="Обновить данные сервера" :disabled="refreshingServerId !== null || deletingServerId !== null" @click="refreshServer(server)">
+          <button class="admin-server-icon-button" type="button" :aria-label="refreshingServerId === server.id ? 'Обновление данных сервера' : 'Обновить данные сервера'" v-tooltip="'Обновить данные сервера'" :disabled="refreshingServerId !== null || deletingServerId !== null" @click="refreshServer(server)">
             <RefreshCw :size="14" :class="{ 'is-spinning': refreshingServerId === server.id }" />
           </button>
         </div>
@@ -895,7 +895,7 @@ watch(section, (next, previous) => {
     <form class="admin-ban-search" role="search" @submit.prevent="searchAdminBans">
       <label class="auth-field"><span>Поиск по нику, Steam ID, IP или причине</span><input v-model.trim="adminBanSearch" class="auth-input" type="search" maxlength="100" placeholder="Например, STEAM_0:0:…" /></label>
       <button class="friend-action admin-user-search-submit" type="submit" :disabled="adminBansLoading"><Search :size="14" /> Найти</button>
-      <button class="friend-action admin-server-icon-button" type="button" aria-label="Обновить список" title="Обновить список" :disabled="adminBansLoading" @click="loadAdminBans"><RefreshCw :size="14" :class="{ 'is-spinning': adminBansLoading }" /></button>
+      <button class="friend-action admin-server-icon-button" type="button" aria-label="Обновить список" v-tooltip="'Обновить список'" :disabled="adminBansLoading" @click="loadAdminBans"><RefreshCw :size="14" :class="{ 'is-spinning': adminBansLoading }" /></button>
     </form>
     <div class="admin-ban-filters" role="group" aria-label="Фильтр по статусу бана">
       <button v-for="item in banStatusOptions" :key="item.value" type="button" :aria-pressed="adminBanStatus === item.value" @click="selectAdminBanStatus(item.value)">{{ item.label }} <span>{{ adminBanCounts[item.value].toLocaleString('ru-RU') }}</span></button>
@@ -953,7 +953,7 @@ watch(section, (next, previous) => {
           <div class="admin-user-fields">
             <label class="auth-field">
               <span>Никнейм</span>
-              <input v-model.trim="userForm.nickname" class="auth-input" type="text" minlength="2" maxlength="32" pattern="[\p{L}\p{N}_!?#@]+" title="Только буквы, цифры и символы _ ! ? # @. Без пробелов и ссылок." required autocomplete="off" />
+              <input v-model.trim="userForm.nickname" class="auth-input" type="text" minlength="2" maxlength="32" pattern="[\p{L}\p{N}_!?#@]+" v-tooltip="'Только буквы, цифры и символы _ ! ? # @. Без пробелов и ссылок.'" required autocomplete="off" />
             </label>
             <label class="auth-field">
               <span>Email</span>

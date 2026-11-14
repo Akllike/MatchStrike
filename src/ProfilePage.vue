@@ -773,7 +773,7 @@ watch(nickname, loadProfile, { immediate: true })
                 :href="socialProfileUrl(platform.id, profile?.socialLinks?.[platform.id]) ?? undefined"
                 target="_blank"
                 rel="noopener noreferrer"
-                :title="`${platform.label} · ${socialUsername(platform.id)}`"
+                v-tooltip="`${platform.label} · ${socialUsername(platform.id)}`"
                 :aria-label="`Открыть ${platform.label}: ${socialUsername(platform.id)}`"
               >
                 <img :src="`/uploads/icons/${platform.icon}`" alt="" aria-hidden="true" width="38" height="38" loading="lazy" />
@@ -790,7 +790,7 @@ watch(nickname, loadProfile, { immediate: true })
                   :key="friend.id"
                   class="profile-friends-stack-item"
                   :to="{ name: 'profile', params: { nickname: friend.nickname } }"
-                  :title="friend.nickname"
+                  v-tooltip="friend.nickname"
                   :aria-label="`Открыть профиль ${friend.nickname}`"
                 >
                   <img v-if="friend.avatarUrl" :src="friend.avatarUrl" alt="" />
@@ -800,7 +800,7 @@ watch(nickname, loadProfile, { immediate: true })
                   v-if="profile.friends.length > 5"
                   class="profile-friends-stack-item profile-friends-stack-more"
                   type="button"
-                  :title="`Все друзья: ${profile.friends.length}`"
+                  v-tooltip="`Все друзья: ${profile.friends.length}`"
                   @click="selectProfileTab('friends')"
                 >+{{ profile.friends.length - 5 }}</button>
               </div>
@@ -829,7 +829,7 @@ watch(nickname, loadProfile, { immediate: true })
                     :key="day.date || `blank-${weekIndex}-${dayIndex}`"
                     class="profile-activity-day"
                     :class="activityLevel(day.count)"
-                    :title="activityDayTitle(day)"
+                    v-tooltip="activityDayTitle(day)"
                     :aria-label="day.date ? activityDayTitle(day) : undefined"
                     :aria-hidden="!day.date"
                   ></span>
@@ -851,7 +851,7 @@ watch(nickname, loadProfile, { immediate: true })
                     :key="day.date || `mobile-blank-${weekIndex}-${dayIndex}`"
                     class="profile-activity-day"
                     :class="activityLevel(day.count)"
-                    :title="activityDayTitle(day)"
+                    v-tooltip="activityDayTitle(day)"
                     :aria-label="day.date ? activityDayTitle(day) : undefined"
                     :aria-hidden="!day.date"
                   ></span>
@@ -961,7 +961,7 @@ watch(nickname, loadProfile, { immediate: true })
             <polygon :points="formPlot.area" fill="url(#profile-form-fill)" />
             <polyline :points="formPlot.line" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
           </svg>
-          <button v-for="(point, index) in formChart" :key="point.id" class="profile-form-point" :class="{ 'is-selected': selectedFormMatch?.id === point.id }" type="button" :title="`${point.map} · ${point.mode} · ${formMetricValue(point.value)}`" :aria-label="`${point.map}, ${point.mode}: ${formMetricValue(point.value)}`" @mouseenter="selectedFormMatchId = point.id" @focus="selectedFormMatchId = point.id" @click="selectedFormMatchId = point.id">
+          <button v-for="(point, index) in formChart" :key="point.id" class="profile-form-point" :class="{ 'is-selected': selectedFormMatch?.id === point.id }" type="button" v-tooltip="`${point.map} · ${point.mode} · ${formMetricValue(point.value)}`" :aria-label="`${point.map}, ${point.mode}: ${formMetricValue(point.value)}`" @mouseenter="selectedFormMatchId = point.id" @focus="selectedFormMatchId = point.id" @click="selectedFormMatchId = point.id">
             <span class="profile-form-bar" :style="{ height: `${point.height}%` }"></span>
             <small v-if="formChart.length <= 10 || index % 5 === 0">{{ point.date.slice(5).split('-').reverse().join('.') }}</small>
           </button>

@@ -740,7 +740,7 @@ onBeforeUnmount(() => {
 
       <form class="settings-block settings-form" @submit.prevent="saveNickname">
         <div class="settings-block-heading"><UserRound :size="15" /><strong>Никнейм</strong></div>
-        <label class="auth-field"><span>Имя профиля</span><input v-model.trim="accountForm.nickname" class="auth-input" type="text" autocomplete="nickname" required minlength="2" maxlength="32" pattern="[\p{L}\p{N}_!?#@]+" title="Только буквы, цифры и символы _ ! ? # @. Без пробелов и ссылок." :aria-invalid="Boolean(errorFor(accountErrors, 'nickname'))" /><span v-if="errorFor(accountErrors, 'nickname')" class="field-error">{{ errorFor(accountErrors, 'nickname') }}</span></label>
+        <label class="auth-field"><span>Имя профиля</span><input v-model.trim="accountForm.nickname" class="auth-input" type="text" autocomplete="nickname" required minlength="2" maxlength="32" pattern="[\p{L}\p{N}_!?#@]+" v-tooltip="'Только буквы, цифры и символы _ ! ? # @. Без пробелов и ссылок.'" :aria-invalid="Boolean(errorFor(accountErrors, 'nickname'))" /><span v-if="errorFor(accountErrors, 'nickname')" class="field-error">{{ errorFor(accountErrors, 'nickname') }}</span></label>
         <p v-if="nicknameMessage" class="settings-message" role="status">{{ nicknameMessage }}</p>
         <div class="settings-actions"><span>Ваш основной никнейм, который будет указываться на сайте в статистике, блокировках, активных матчах и тд.</span><button class="dialog-primary" type="submit" :disabled="!nicknameChanged || accountBusy">{{ accountBusy ? 'Сохраняем…' : 'Сохранить никнейм' }}</button></div>
       </form>
@@ -760,7 +760,7 @@ onBeforeUnmount(() => {
 
       <form class="settings-block settings-form" @submit.prevent="saveSteamId">
         <div class="settings-block-heading"><Link2 :size="15" /><strong>Привязать Steam ID</strong></div>
-        <label class="auth-field"><span>SteamID64 или SteamAuth2</span><input v-model.trim="steamIdForm.steamId" class="auth-input" type="text" autocomplete="off" maxlength="32" pattern="([0-9]{17}|[Ss][Tt][Ee][Aa][Mm]_[0-5]:[01]:[0-9]{1,10})" placeholder="76561198000000000 или STEAM_0:1:12345678" title="Введите SteamID64 из 17 цифр или SteamAuth2 в формате STEAM_0:1:12345678." :disabled="Boolean(account.steamId)" :aria-invalid="Boolean(errorFor(steamErrors, 'steamId'))" /><span v-if="errorFor(steamErrors, 'steamId')" class="field-error">{{ errorFor(steamErrors, 'steamId') }}</span></label>
+        <label class="auth-field"><span>SteamID64 или SteamAuth2</span><input v-model.trim="steamIdForm.steamId" class="auth-input" type="text" autocomplete="off" maxlength="32" pattern="([0-9]{17}|[Ss][Tt][Ee][Aa][Mm]_[0-5]:[01]:[0-9]{1,10})" placeholder="76561198000000000 или STEAM_0:1:12345678" v-tooltip="'Введите SteamID64 из 17 цифр или SteamAuth2 в формате STEAM_0:1:12345678.'" :disabled="Boolean(account.steamId)" :aria-invalid="Boolean(errorFor(steamErrors, 'steamId'))" /><span v-if="errorFor(steamErrors, 'steamId')" class="field-error">{{ errorFor(steamErrors, 'steamId') }}</span></label>
         <p v-if="account.steamId" class="settings-message" role="status">Изменение или удаление привязанного Steam ID доступно только через тикет администрации.</p>
         <p v-if="steamMessage" class="settings-message" role="status">{{ steamMessage }}</p>
         <div class="settings-actions"><span>Поддерживаются SteamID64 и SteamAuth2</span><button v-if="!account.steamId" class="dialog-primary" type="submit" :disabled="!steamIdChanged || steamBusy">{{ steamBusy ? 'Сохраняем…' : 'Привязать Steam ID' }}</button></div>
@@ -860,7 +860,7 @@ onBeforeUnmount(() => {
           <article v-for="session in sessions" :key="session.id" class="settings-session-row">
             <span class="settings-session-icon"><component :is="session.deviceType === 'mobile' ? Smartphone : session.deviceType === 'tablet' ? Tablet : Monitor" :size="15" /></span>
             <div class="settings-session-info"><strong>{{ session.device }} <span v-if="session.isCurrent" class="settings-current-session">Текущий</span></strong><span>{{ session.ipAddress || 'IP неизвестен' }} · {{ formatActivity(session.lastActivity) }}</span></div>
-            <button v-if="!session.isCurrent" class="settings-remove-button" type="button" :disabled="sessionActionId !== null || revokeOthersBusy" :aria-label="`Завершить сеанс ${session.device}`" title="Завершить сеанс" @click="endSession(session)"><LogOut :size="14" /> {{ sessionActionId === session.id ? 'Завершаем…' : 'Завершить' }}</button>
+            <button v-if="!session.isCurrent" class="settings-remove-button" type="button" :disabled="sessionActionId !== null || revokeOthersBusy" :aria-label="`Завершить сеанс ${session.device}`" v-tooltip="'Завершить сеанс'" @click="endSession(session)"><LogOut :size="14" /> {{ sessionActionId === session.id ? 'Завершаем…' : 'Завершить' }}</button>
           </article>
         </div>
         <p v-else-if="!sessionsLoading" class="settings-description">Активные сеансы не найдены.</p>

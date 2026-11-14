@@ -299,7 +299,7 @@ onMounted(loadPage)
         </div>
         <div class="friend-actions">
           <RouterLink class="friend-action friend-profile-action" :to="{ name: 'profile', params: { nickname: friend.nickname } }"><UserRound :size="15" /> Профиль</RouterLink>
-          <button class="friend-action friend-invite-action" type="button" disabled title="Приглашения появятся позже"><UserPlus :size="15" /> Пригласить</button>
+          <button class="friend-action friend-invite-action" type="button" disabled v-tooltip="'Приглашения появятся позже'"><UserPlus :size="15" /> Пригласить</button>
           <button class="friend-action friend-remove-action" type="button" :disabled="removingNickname !== null" @click="removeFriend(friend)"><Trash2 :size="15" /> Удалить</button>
         </div>
       </article>

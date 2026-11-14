@@ -245,7 +245,7 @@ onBeforeUnmount(() => {
   <div class="tickets-heading section-heading">
     <div><div class="section-kicker">MATCHSTRIKE / SUPPORT</div><h2>Тикеты</h2></div>
     <div class="tickets-heading-actions">
-      <button class="tickets-icon-button dialog-secondary" type="button" title="Обновить тикеты" aria-label="Обновить тикеты" @click="refreshWorkspace"><RefreshCw :size="15" /></button>
+      <button class="tickets-icon-button dialog-secondary" type="button" v-tooltip="'Обновить тикеты'" aria-label="Обновить тикеты" @click="refreshWorkspace"><RefreshCw :size="15" /></button>
       <span v-if="!admin" class="tickets-create-control" :class="{ 'is-blocked': hasOpenTicket }" :tabindex="hasOpenTicket ? 0 : undefined" :aria-label="hasOpenTicket ? 'Создать тикет недоступно' : undefined" :aria-describedby="hasOpenTicket ? 'tickets-create-reason' : undefined">
         <button class="tickets-primary dialog-primary" type="button" :disabled="loading || hasOpenTicket" @click="newTicket"><Plus :size="15" /> Создать тикет</button>
         <span v-if="hasOpenTicket" id="tickets-create-reason" class="tickets-create-tooltip" role="tooltip">Новый тикет можно создать после закрытия открытого обращения.</span>
@@ -273,10 +273,10 @@ onBeforeUnmount(() => {
     <section class="ticket-dialog" aria-label="Диалог тикета">
       <Transition name="ticket-chat" mode="out-in" @after-enter="scrollToLatest">
       <form v-if="composing" key="compose" class="ticket-compose" @submit.prevent="submitTicket">
-        <div class="ticket-dialog-header"><div><span class="section-kicker">НОВОЕ ОБРАЩЕНИЕ</span><h3>Создать тикет</h3></div><button class="tickets-icon-button dialog-secondary" type="button" aria-label="Отменить" title="Отменить" @click="composing = false"><X :size="16" /></button></div>
+        <div class="ticket-dialog-header"><div><span class="section-kicker">НОВОЕ ОБРАЩЕНИЕ</span><h3>Создать тикет</h3></div><button class="tickets-icon-button dialog-secondary" type="button" aria-label="Отменить" v-tooltip="'Отменить'" @click="composing = false"><X :size="16" /></button></div>
         <label>Тема обращения<select v-model="category" required><option disabled value="">Выберите тему</option><option v-for="value in createCategories" :key="value" :value="value">{{ categoryLabels[value] }}</option></select></label>
         <label>Название<input v-model="subject" maxlength="160" required placeholder="Кратко опишите ваш вопрос" /></label>
-        <label class="ticket-compose-message">Сообщение<textarea v-model="message" maxlength="5000" required placeholder="Опишите ваш вопрос" title="Enter — отправить, Shift+Enter — новая строка" @keydown="handleMessageKeydown"></textarea></label>
+        <label class="ticket-compose-message">Сообщение<textarea v-model="message" maxlength="5000" required placeholder="Опишите ваш вопрос" v-tooltip="'Enter — отправить, Shift+Enter — новая строка'" @keydown="handleMessageKeydown"></textarea></label>
         <button class="tickets-primary dialog-primary" type="submit" :disabled="busy || !category || !subject.trim() || !message.trim()"><Send :size="14" /> {{ busy ? 'Отправляем…' : 'Отправить' }}</button>
       </form>
       <div v-else-if="conversation" :key="`ticket-${conversation.ticket.id}`" class="ticket-conversation">
@@ -299,7 +299,7 @@ onBeforeUnmount(() => {
           </template>
         </div>
         <form v-if="conversation.ticket.status === 'open'" class="ticket-reply" @submit.prevent="sendReply">
-          <textarea ref="replyInput" v-model="reply" maxlength="5000" aria-label="Сообщение" placeholder="Написать сообщение…" title="Enter — отправить, Shift+Enter — новая строка" rows="1" @keydown="handleMessageKeydown"></textarea>
+          <textarea ref="replyInput" v-model="reply" maxlength="5000" aria-label="Сообщение" placeholder="Написать сообщение…" v-tooltip="'Enter — отправить, Shift+Enter — новая строка'" rows="1" @keydown="handleMessageKeydown"></textarea>
           <button class="tickets-primary dialog-primary" type="submit" :disabled="busy || !reply.trim()"><Send :size="14" /> Отправить</button>
         </form>
         <div v-else class="ticket-closed-note"><CheckCircle2 :size="15" /> Тикет закрыт</div>

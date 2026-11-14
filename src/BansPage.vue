@@ -106,7 +106,7 @@ onUnmounted(() => {
         <Search :size="16" aria-hidden="true" />
         <input v-model="search" type="search" maxlength="100" placeholder="Никнейм, Steam ID или причина" aria-label="Поиск по банам" />
       </label>
-      <button class="admin-server-icon-button bans-refresh" type="button" :disabled="loading" aria-label="Обновить список банов" title="Обновить список" @click="load()"><RefreshCw :size="15" :class="{ 'is-spinning': loading }" /></button>
+      <button class="admin-server-icon-button bans-refresh" type="button" :disabled="loading" aria-label="Обновить список банов" v-tooltip="'Обновить список'" @click="load()"><RefreshCw :size="15" :class="{ 'is-spinning': loading }" /></button>
     </div>
 
     <div class="bans-filter-tabs" role="group" aria-label="Фильтр банов">
