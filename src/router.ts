@@ -5,6 +5,7 @@ import { adminLandingPath, canAccessAdmin } from './adminAccess'
 
 const DashboardPage = () => import('./DashboardPage.vue')
 const MatchesPage = () => import('./MatchesPage.vue')
+const LobbyPage = () => import('./LobbyPage.vue')
 const MatchDetailPage = () => import('./MatchDetailPage.vue')
 const StatsPage = () => import('./StatsPage.vue')
 const BansPage = () => import('./BansPage.vue')
@@ -23,6 +24,7 @@ export const router = createRouter({
       component: AppShell,
       children: [
         { path: '', name: 'home', component: DashboardPage },
+        { path: 'lobby', name: 'lobby', component: LobbyPage },
         { path: 'matches', redirect: { name: 'matches-mode', params: { mode: 'mix' } } },
         { path: 'matches/:mode(mix|war)', name: 'matches-mode', component: MatchesPage },
         { path: 'matches/:id(\\d+)', name: 'match-detail', component: MatchDetailPage },

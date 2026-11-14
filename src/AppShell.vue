@@ -398,6 +398,7 @@ function toggleSidebar() {
 }
 
 const navigation = [
+  { id: 'lobby', label: 'Лобби', to: '/lobby', icon: Users },
   { id: 'matches', label: 'Матчи', to: '/matches', icon: Gamepad2 },
   { id: 'stats', label: 'Статистика', to: '/stats', icon: Activity },
   { id: 'bans', label: 'Баны', to: '/bans', icon: Ban },

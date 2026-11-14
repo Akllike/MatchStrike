@@ -37,6 +37,7 @@ export interface ApiHealth {
 }
 
 export interface PublicGameServer {
+  lobbyOnly: boolean
   id: number
   name: string
   map: string | null
@@ -131,6 +132,12 @@ export interface AdminUserSummary {
 }
 
 export interface AdminGameServer {
+  lobbyEnabled: boolean
+  lobbyReady: boolean
+  lobbyError: string | null
+  lobbyMaps: string[]
+  lobbyAvailableMaps: string[]
+  lobbyMapsPending: boolean
   id: number
   name: string | null
   ip: string
@@ -1074,4 +1081,37 @@ export async function getAdminStatisticsSource(): Promise<StatisticsSource> {
 export async function updateAdminStatisticsSource(source: StatisticsSource): Promise<StatisticsSource> {
   const data = await mutateJson<{ source: StatisticsSource }>(`${apiBaseUrl}/admin/statistics/source`, 'PUT', { source })
   return data.source
+}
+
+export interface LobbyMember { userId: number; nickname: string; avatarUrl: string | null; team: number; seat: number; connected: boolean }
+export interface LobbyRoom {
+  id: string; name: string; status: 'waiting' | 'provisioning' | 'joining' | 'live' | 'completed' | 'cancelled'; captainId: number | null
+  isPrivate: boolean; teamSize: number; format: 'Classic' | 'BO1' | 'BO3' | 'BO5'; maps: string[]; roundsPerHalf: number
+  teamAName: string; teamBName: string; matchId: number | null; deadline: string | null; finishReason: string | null; createdAt: string
+  server: { address: string; password: string } | null; members: LobbyMember[]
+}
+export interface LobbySettings { name: string; password?: string | null; team_size: number; format: LobbyRoom['format']; maps: string[]; rounds_per_half: number; team_a_name: string; team_b_name: string }
+export interface LobbyListing { rooms: LobbyRoom[]; myRoom: LobbyRoom | null; maps: string[]; availableServers: number; pagination: { page: number; lastPage: number; total: number } }
+export async function getLobbies(page = 1): Promise<LobbyListing> {
+  return readJson<LobbyListing>(await apiFetch(`${apiBaseUrl}/lobbies?page=${page}`, { credentials: 'include', headers: { Accept: 'application/json' } }))
+}
+export async function getLobby(id: string): Promise<LobbyRoom> {
+  return (await readJson<{ room: LobbyRoom }>(await apiFetch(`${apiBaseUrl}/lobbies/${encodeURIComponent(id)}`, { credentials: 'include', headers: { Accept: 'application/json' } }))).room
+}
+export async function saveLobby(settings: LobbySettings, id?: string): Promise<LobbyRoom> {
+  return (await mutateJson<{ room: LobbyRoom }>(`${apiBaseUrl}/lobbies${id ? `/${id}` : ''}`, id ? 'PUT' : 'POST', settings)).room
+}
+export async function takeLobbySeat(id: string, team: number, seat: number, password?: string): Promise<LobbyRoom> {
+  return (await postJson<{ room: LobbyRoom }>(`${apiBaseUrl}/lobbies/${id}/seat`, { team, seat, password })).room
+}
+export async function leaveLobby(id: string): Promise<void> { await postJson(`${apiBaseUrl}/lobbies/${id}/leave`) }
+export async function startLobby(id: string): Promise<LobbyRoom> { return (await postJson<{ room: LobbyRoom }>(`${apiBaseUrl}/lobbies/${id}/start`)).room }
+export async function cancelLobby(id: string): Promise<void> { await mutateJson(`${apiBaseUrl}/lobbies/${id}`, 'DELETE') }
+export async function setServerLobbyMode(id: number, enabled: boolean): Promise<void> { await mutateJson(`${apiBaseUrl}/admin/servers/${id}/lobby`, 'PUT', { enabled }) }
+export interface ServerLobbyMaps { maps: string[]; available: string[]; pending: boolean }
+export async function setServerLobbyMaps(id: number, maps: string[]): Promise<ServerLobbyMaps> {
+  return mutateJson(`${apiBaseUrl}/admin/servers/${id}/lobby/maps`, 'PUT', { maps })
+}
+export async function getServerLobbyMaps(id: number): Promise<ServerLobbyMaps> {
+  return readJson<ServerLobbyMaps>(await apiFetch(`${apiBaseUrl}/admin/servers/${id}/lobby/maps`, { credentials: 'include', headers: { Accept: 'application/json' } }))
 }

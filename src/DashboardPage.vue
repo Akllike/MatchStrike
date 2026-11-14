@@ -213,9 +213,10 @@ onMounted(async () => {
           <article v-for="(server, index) in servers" :key="server.id" class="server-row" :class="{ 'has-query-data': server.playersOnline !== null }">
           <span class="server-number">0{{ index + 1 }}</span>
           <span class="server-game-icon"><Gamepad2 :size="19" /></span>
-          <div class="server-main"><h3>{{ server.name }}</h3><span>{{ server.mode }} <i></i> {{ server.map || 'Карта не получена' }}</span></div>
+          <div class="server-main"><h3>{{ server.name }}</h3><span>{{ server.lobbyOnly ? 'Только лобби' : server.mode }} <i></i> {{ server.map || 'Карта не получена' }}</span></div>
           <div class="server-players" :class="{ 'has-query-data': server.playersOnline !== null }"><Users :size="15" /><strong>{{ server.playersOnline ?? '—' }}</strong><span>/ {{ server.playerLimit ?? '—' }}</span></div>
-          <a class="server-join" :href="`steam://connect/${server.address}`" :aria-label="`Подключиться к ${server.name}`"><ArrowRight :size="17" /></a>
+          <RouterLink v-if="server.lobbyOnly" class="server-join" to="/lobby" :aria-label="`${server.name} — только через лобби`" v-tooltip="'Сервер только для лобби'"><Users :size="17" /></RouterLink>
+          <a v-else class="server-join" :href="`steam://connect/${server.address}`" :aria-label="`Подключиться к ${server.name}`"><ArrowRight :size="17" /></a>
         </article>
       </div>
       <div v-else class="empty-state section-empty">

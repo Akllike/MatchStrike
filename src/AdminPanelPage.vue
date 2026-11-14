@@ -5,6 +5,7 @@ import { Activity, Ban, CircleHelp, Database, Gamepad2, Image, KeyRound, Link2, 
 import PageLoader from './components/PageLoader.vue'
 import TicketWorkspace from './components/TicketWorkspace.vue'
 import AdminSubnav from './components/AdminSubnav.vue'
+import { setServerLobbyMode, setServerLobbyMaps, getServerLobbyMaps } from './api'
 import {
   getAdminOverview,
   connectDonutMatch,
@@ -64,6 +65,45 @@ const serversLoading = ref(false)
 const serversError = ref('')
 const serverDialog = ref<'server' | 'integration' | 'rcon' | 'donutmatch' | null>(null)
 const serverAction = ref(false)
+const togglingLobby = ref<number | null>(null)
+const savingLobbyMaps = ref<number | null>(null)
+const lobbyMapInputs = ref<Record<number, string>>({})
+async function updateLobbyMaps(server: AdminGameServer, maps: string[]) {
+  if (savingLobbyMaps.value !== null) return
+  savingLobbyMaps.value = server.id
+  serversError.value = ''
+  try {
+    const result = await setServerLobbyMaps(server.id, maps)
+    replaceServer({ ...server, lobbyMaps: result.maps, lobbyMapsPending: result.pending, lobbyAvailableMaps: result.available })
+    lobbyMapInputs.value[server.id] = ''
+  } catch (error) { serversError.value = error instanceof Error ? error.message : 'Не удалось изменить пул карт.' }
+  finally { savingLobbyMaps.value = null }
+}
+function addLobbyMap(server: AdminGameServer) {
+  const map = (lobbyMapInputs.value[server.id] ?? '').trim()
+  if (!/^[a-zA-Z0-9_/-]{1,63}$/.test(map)) { serversError.value = 'Укажите имя карты без пробелов и расширения .bsp.'; return }
+  if (server.lobbyMaps.includes(map)) { serversError.value = 'Карта уже есть в пуле.'; return }
+  void updateLobbyMaps(server, [...server.lobbyMaps, map])
+}
+async function refreshLobbyMaps(server: AdminGameServer) {
+  if (savingLobbyMaps.value !== null) return
+  savingLobbyMaps.value = server.id
+  try {
+    const result = await getServerLobbyMaps(server.id)
+    replaceServer({ ...server, lobbyMaps: result.maps, lobbyMapsPending: result.pending, lobbyAvailableMaps: result.available })
+  } catch (error) { serversError.value = error instanceof Error ? error.message : 'Не удалось обновить пул карт.' }
+  finally { savingLobbyMaps.value = null }
+}
+async function toggleLobbyMode(server: AdminGameServer) {
+  if (togglingLobby.value !== null) return
+  togglingLobby.value = server.id
+  serversError.value = ''
+  try {
+    await setServerLobbyMode(server.id, !server.lobbyEnabled)
+    replaceServer({ ...server, lobbyEnabled: !server.lobbyEnabled, lobbyReady: false })
+  } catch (error) { serversError.value = error instanceof Error ? error.message : 'Не удалось изменить режим сервера.' }
+  finally { togglingLobby.value = null }
+}
 const serverDialogError = ref('')
 const serverDialogStatus = ref('')
 const activeServer = ref<AdminGameServer | null>(null)
@@ -871,6 +911,8 @@ watch(section, (next, previous) => {
           <div><span>DonutMatch</span><strong :class="{ 'is-connected': server.donutmatchConnected }">{{ server.donutmatchConnected ? (server.donutmatchLastSeenAt ? 'Данные получены' : 'Ожидает данные') : 'Не подключён' }}</strong></div>
         </div>
         <div class="admin-server-actions">
+          <button class="friend-action server-lobby-switch" type="button" role="switch" :aria-checked="server.lobbyEnabled" :disabled="togglingLobby !== null" @click="toggleLobbyMode(server)"><span class="server-lobby-track" aria-hidden="true"><i></i></span> Лобби: {{ server.lobbyEnabled ? 'включено · только комнаты' : 'выключено · общедоступный' }}</button>
+          <span v-if="server.lobbyEnabled" class="profile-data-note">{{ server.lobbyError || (server.lobbyReady ? 'Готов к распределению' : 'Ожидает мост или занят матчем') }}</span>
           <button class="friend-action" type="button" @click="openServerEditor(server)"><Pencil :size="13" /> Изменить</button>
           <button class="friend-action" type="button" @click="openIntegration(server, 'sourcebans')"><Link2 :size="13" /> {{ server.sourcebansConnected ? 'SourceBans' : 'Подключить SourceBans' }}</button>
           <button class="friend-action" type="button" @click="openIntegration(server, 'levels')"><Database :size="13" /> {{ server.levelsConnected ? 'LVL' : 'Подключить LVL' }}</button>
@@ -878,6 +920,13 @@ watch(section, (next, previous) => {
           <button class="friend-action" type="button" @click="openRcon(server)"><Terminal :size="13" /> Выполнить RCON</button>
           <button class="admin-danger-button is-delete" type="button" :disabled="deletingServerId === server.id || refreshingServerId !== null" @click="removeServer(server)"><Trash2 :size="13" /> {{ deletingServerId === server.id ? 'Удаляем…' : 'Удалить' }}</button>
         </div>
+        <section v-if="server.lobbyEnabled" class="server-lobby-maps" aria-label="Карты для лобби">
+          <header><strong>Карты для лобби</strong><span>{{ server.lobbyMapsPending ? 'Ожидаем подтверждения donut_map_pool' : 'Пул из donut_map_pool' }}</span><button class="friend-action" type="button" :disabled="savingLobbyMaps !== null" @click="refreshLobbyMaps(server)"><RefreshCw :size="12" /> Обновить</button></header>
+          <div class="server-lobby-map-tags"><span v-for="map in server.lobbyMaps" :key="map" :class="{ 'is-unavailable': !server.lobbyAvailableMaps.includes(map) }"><code>{{ map }}</code><small v-if="!server.lobbyAvailableMaps.includes(map)" v-tooltip="'Карта не обнаружена на сервере. Для матча нужен установленный .bsp; после добавления дождитесь обновления моста.'" tabindex="0" aria-label="Карта не установлена">!</small><button type="button" :aria-label="`Удалить ${map} из пула лобби`" :disabled="savingLobbyMaps !== null" @click="updateLobbyMaps(server, server.lobbyMaps.filter(item => item !== map))"><X :size="12" /></button></span></div>
+          <p v-if="!server.lobbyMaps.length">В пуле пока нет карт. Добавьте карты или дождитесь первого подключения обновлённого моста.</p>
+          <form @submit.prevent="addLobbyMap(server)"><input v-model.trim="lobbyMapInputs[server.id]" type="text" :aria-label="`Добавить карту на сервер ${server.name || server.id}`" placeholder="Например, de_dust2_ob" required maxlength="63" :disabled="savingLobbyMaps !== null" /><button class="friend-action" type="submit" :disabled="savingLobbyMaps !== null || server.lobbyMaps.length >= 32"><Plus :size="13" /> Добавить</button></form>
+          <p>Удаление убирает карту из пула будущих лобби. Файлы карты и порядок карт текущего матча сохраняются.</p>
+        </section>
       </article>
     </div>
     <div v-else class="admin-placeholder"><Gamepad2 :size="20" /><strong>Серверы ещё не добавлены</strong><span>Добавьте IP, порт и RCON-пароль, чтобы начать управление.</span></div>
@@ -1148,3 +1197,17 @@ watch(section, (next, previous) => {
   </Teleport>
 
 </template>
+
+<style scoped>
+.server-lobby-switch { text-align:left; }
+.server-lobby-maps { margin-top:17px; padding:17px; border-radius:11px; background:var(--line-soft); }
+.server-lobby-maps header { display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; justify-content:space-between; margin-bottom:13px; }
+.server-lobby-maps header strong { font-size:12px; }.server-lobby-maps header>span,.server-lobby-maps p { color:var(--muted); font-size:10px; line-height:1.8; }.server-lobby-maps p { margin:10px 0 0; }
+.server-lobby-map-tags { display:flex; flex-wrap:wrap; gap:7px; }.server-lobby-map-tags>span { display:flex; align-items:center; gap:8px; padding:7px 9px; border-radius:7px; background:var(--panel); color:var(--text); }.server-lobby-map-tags code { font:inherit; font-size:10px; overflow-wrap:anywhere; }.server-lobby-map-tags small { display:grid; place-items:center; width:14px; height:14px; border-radius:50%; background:var(--surface-tint); color:var(--yellow); font-weight:700; }.server-lobby-map-tags button { display:flex; align-items:center; justify-content:center; border:0; padding:2px; background:none; color:var(--subtle); cursor:pointer; }.server-lobby-map-tags button:hover { color:var(--text); }.server-lobby-map-tags .is-unavailable code { color:var(--muted); }
+.server-lobby-maps form { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }.server-lobby-maps input { flex:1; min-width:150px; padding:9px 11px; border:1px solid var(--line); border-radius:8px; color:var(--text); background:var(--panel); font:inherit; font-size:11px; }
+.server-lobby-track { display:inline-flex; align-items:center; width:29px; height:17px; flex-shrink:0; padding:3px; border-radius:12px; background:var(--line); transition:background .15s; }
+.server-lobby-track i { display:block; width:11px; height:11px; border-radius:50%; background:var(--muted); transition:transform .15s; }
+.server-lobby-switch[aria-checked=true] .server-lobby-track { background:var(--yellow); }
+.server-lobby-switch[aria-checked=true] .server-lobby-track i { transform:translateX(12px); background:var(--bg); }
+@media(prefers-reduced-motion:reduce) { .server-lobby-track,.server-lobby-track i { transition:none; } }
+</style>
