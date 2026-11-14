@@ -816,7 +816,7 @@ watch(nickname, loadProfile, { immediate: true })
           <strong class="profile-activity-mobile-label"><b>{{ mobileMatchActivityTotal }}</b><span>матчей</span></strong>
         </div>
         <div class="profile-activity-scroll" role="group" aria-label="Календарь активности матчей по дням">
-          <div class="profile-activity-calendar profile-activity-calendar-desktop">
+          <div class="profile-activity-calendar profile-activity-calendar-desktop" :style="{ '--activity-weeks': matchActivityWeeks.length }">
             <div class="profile-activity-months" aria-hidden="true">
               <span v-for="(week, weekIndex) in matchActivityWeeks" :key="`month-${weekIndex}`">{{ week.month }}</span>
             </div>
@@ -838,7 +838,7 @@ watch(nickname, loadProfile, { immediate: true })
             </div>
             <div class="profile-activity-legend" aria-hidden="true"><span>Меньше</span><i class="level-0"></i><i class="level-1"></i><i class="level-2"></i><i class="level-3"></i><i class="level-4"></i><span>Больше</span></div>
           </div>
-          <div class="profile-activity-calendar profile-activity-calendar-mobile">
+          <div class="profile-activity-calendar profile-activity-calendar-mobile" :style="{ '--activity-weeks': mobileMatchActivityWeeks.length }">
             <div class="profile-activity-months" aria-hidden="true">
               <span v-for="(week, weekIndex) in mobileMatchActivityWeeks" :key="`mobile-month-${weekIndex}`">{{ week.month }}</span>
             </div>
