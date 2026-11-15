@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Activity, CalendarDays, Check, Film, Flag, LoaderCircle, Share2, Target, Trophy, Upload, UserPlus, UserRound, UserRoundMinus, Users, X } from '@lucide/vue'
+import { Activity, CalendarDays, Check, ChevronRight, Film, Flag, LoaderCircle, Share2, Swords, Target, Trophy, Upload, UserPlus, UserRound, UserRoundMinus, Users, X } from '@lucide/vue'
 import PageLoader from './components/PageLoader.vue'
 import ProfileMatchList from './components/ProfileMatchList.vue'
 import AdvancedPerformance from './components/AdvancedPerformance.vue'
@@ -69,6 +69,10 @@ const profileTabs = [
 type ProfileTabId = typeof profileTabs[number]['id']
 const activeProfileTab = ref<ProfileTabId>('overview')
 const profileMatches = ref<GameMatch[]>([])
+const profileMatchMode = ref<'Mix' | 'War'>('Mix')
+const profileMatchesLoaded = ref(false)
+const recentProfileMatches = computed(() => profile.value?.recentMatchesByMode?.[profileMatchMode.value]
+  ?? profile.value?.recentMatches.filter(match => match.mode === profileMatchMode.value).slice(0, 10) ?? [])
 const profileMatchesPage = ref(1)
 const profileMatchesLastPage = ref(1)
 const profileMatchesTotal = ref(0)
@@ -435,6 +439,9 @@ async function loadProfile() {
   loadError.value = ''
   actionMessage.value = ''
   profileMatches.value = []
+  profileMatchMode.value = 'Mix'
+  profileMatchesLoaded.value = false
+  profileMatchesLoadingMore.value = false
   profileMatchesPage.value = 1
   profileMatchesLastPage.value = 1
   profileMatchesTotal.value = 0
@@ -464,12 +471,13 @@ async function loadProfileMatches(page = 1, append = false) {
   else profileMatchesLoading.value = true
   profileMatchesError.value = ''
   try {
-    const data = await getPlayerMatches(nickname.value, page)
+    const data = await getPlayerMatches(nickname.value, page, profileMatchMode.value)
     if (requestId !== profileMatchesRequest) return
-    profileMatches.value = append ? [...profileMatches.value, ...data.matches] : data.matches
+    profileMatches.value = append ? [...new Map([...profileMatches.value, ...data.matches].map(match => [match.id, match])).values()] : data.matches
     profileMatchesPage.value = data.pagination.currentPage
     profileMatchesLastPage.value = data.pagination.lastPage
     profileMatchesTotal.value = data.pagination.total
+    profileMatchesLoaded.value = true
   } catch (error) {
     if (requestId === profileMatchesRequest) {
       profileMatchesError.value = error instanceof Error ? error.message : 'Не удалось загрузить матчи.'
@@ -484,15 +492,30 @@ async function loadProfileMatches(page = 1, append = false) {
 
 function selectProfileTab(tab: ProfileTabId) {
   activeProfileTab.value = tab
-  if (tab === 'matches' && !profileMatches.value.length && profileMatchesTotal.value === 0 && !profileMatchesLoading.value) {
+  if (tab === 'matches' && !profileMatchesLoaded.value && !profileMatchesLoading.value) {
     void loadProfileMatches(1)
   }
 }
 
 function onProfileMatchesScroll() {
-  if (activeProfileTab.value === 'matches' && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 700 && profileMatchesPage.value < profileMatchesLastPage.value) {
+  if (activeProfileTab.value === 'matches' && !profileMatchesError.value && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 700 && profileMatchesPage.value < profileMatchesLastPage.value) {
     void loadProfileMatches(profileMatchesPage.value + 1, true)
   }
+}
+
+function selectProfileMatchMode(mode: 'Mix' | 'War') {
+  if (profileMatchMode.value === mode) return
+  profileMatchMode.value = mode
+  profileMatchesRequest++
+  profileMatches.value = []
+  profileMatchesPage.value = 1
+  profileMatchesLastPage.value = 1
+  profileMatchesTotal.value = 0
+  profileMatchesLoaded.value = false
+  profileMatchesLoading.value = false
+  profileMatchesLoadingMore.value = false
+  profileMatchesError.value = ''
+  if (activeProfileTab.value === 'matches') void loadProfileMatches(1)
 }
 
 
@@ -786,7 +809,7 @@ watch(nickname, loadProfile, { immediate: true })
                   :key="friend.id"
                   class="profile-friends-stack-item"
                   :to="{ name: 'profile', params: { nickname: friend.nickname } }"
-                  v-tooltip="friend.nickname"
+                  v-tooltip="friend.isBlocked ? `${friend.nickname} · Заблокирован` : friend.nickname"
                   :aria-label="`Открыть профиль ${friend.nickname}`"
                 >
                   <img v-if="friend.avatarUrl" :src="friend.avatarUrl" alt="" />
@@ -865,14 +888,17 @@ watch(nickname, loadProfile, { immediate: true })
         <div><div class="section-kicker">RECENT ACTIVITY</div><h2 id="profile-matches-title">Последние матчи</h2></div>
         <div class="profile-matches-heading-actions">
           <button
-            v-if="profile.recentMatches.length"
+            v-if="recentProfileMatches.length"
             class="profile-matches-more inline-flex items-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-sky-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 dark:bg-sky-500 dark:hover:bg-sky-400"
             type="button"
             @click="selectProfileTab('matches')"
           >Все матчи <ChevronRight :size="14" /></button>
         </div>
       </div>
-      <ProfileMatchList :matches="profile.recentMatches.slice(0, 5)" />
+      <div class="donut-tabs profile-match-modes" :class="{ 'is-war': profileMatchMode === 'War' }" role="group" aria-label="Режим последних матчей">
+        <button v-for="mode in (['Mix', 'War'] as const)" :key="mode" type="button" :aria-pressed="profileMatchMode === mode" @click="selectProfileMatchMode(mode)"><Swords v-if="mode === 'War'" :size="16" /><Users v-else :size="16" />{{ mode }}</button>
+      </div>
+      <ProfileMatchList :matches="recentProfileMatches" :mode="profileMatchMode" />
     </section>
 
     <section class="profile-section" aria-labelledby="map-winrate-title">
@@ -1042,13 +1068,17 @@ watch(nickname, loadProfile, { immediate: true })
         <div><div class="section-kicker">MATCH HISTORY</div><h2>Все матчи игрока</h2></div>
         <span class="section-count">{{ profileMatchesTotal.toString().padStart(2, '0') }} <span>МАТЧЕЙ</span></span>
       </div>
-      <p v-if="profileMatchesError" class="auth-message" role="alert">{{ profileMatchesError }} <button class="auth-inline-link" type="button" @click="loadProfileMatches(profileMatchesPage)">Повторить</button></p>
-      <PageLoader v-else-if="profileMatchesLoading && !profileMatches.length" message="Загружаем историю матчей…" />
-      <ProfileMatchList v-else :matches="profileMatches" />
+      <div class="donut-tabs profile-match-modes" :class="{ 'is-war': profileMatchMode === 'War' }" role="group" aria-label="Режим истории матчей">
+        <button v-for="mode in (['Mix', 'War'] as const)" :key="mode" type="button" :aria-pressed="profileMatchMode === mode" @click="selectProfileMatchMode(mode)"><Swords v-if="mode === 'War'" :size="16" /><Users v-else :size="16" />{{ mode }}</button>
+      </div>
+      <p v-if="profileMatchesError" class="auth-message" role="alert">{{ profileMatchesError }} <button class="auth-inline-link" type="button" @click="loadProfileMatches(profileMatches.length ? profileMatchesPage + 1 : 1, profileMatches.length > 0)">Повторить</button></p>
+      <PageLoader v-if="profileMatchesLoading && !profileMatches.length" message="Загружаем историю матчей…" />
+      <ProfileMatchList v-else-if="profileMatchesLoaded || profileMatches.length" :matches="profileMatches" :mode="profileMatchMode" />
       <div v-if="profileMatchesLastPage > 1" class="donut-pagination profile-matches-pagination">
         <span>{{ profileMatchesPage }} / {{ profileMatchesLastPage }}</span>
       </div>
       <div v-if="profileMatchesLoadingMore" class="donut-pagination" role="status"><LoaderCircle class="is-spinning" :size="16" /> Загружаем ещё матчи…</div>
+      <div v-else-if="profileMatchesPage < profileMatchesLastPage && !profileMatchesError" class="donut-pagination"><button class="friend-action" type="button" @click="loadProfileMatches(profileMatchesPage + 1, true)">Показать ещё</button></div>
     </section>
 
     <section
@@ -1089,7 +1119,7 @@ watch(nickname, loadProfile, { immediate: true })
           </RouterLink>
           <div class="friend-details">
             <RouterLink class="friend-request-nickname" :to="{ name: 'profile', params: { nickname: friend.nickname } }">{{ friend.nickname }}</RouterLink>
-            <span class="friend-last-seen">Профиль MatchStrike</span>
+            <span class="friend-last-seen" :class="{ 'is-blocked':friend.isBlocked }">{{ friend.isBlocked ? 'Заблокирован' : 'Профиль MatchStrike' }}</span>
           </div>
           <div class="friend-actions profile-friend-actions">
             <RouterLink class="friend-action friend-profile-action" :to="{ name: 'profile', params: { nickname: friend.nickname } }">

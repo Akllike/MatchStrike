@@ -15,7 +15,7 @@ const error=ref('')
 let timer:ReturnType<typeof setInterval> | undefined
 let activeUser:number | null=null
 let disposed=false
-const online=(friend:FriendSummary) => friend.isOnline ?? (!!friend.lastSeenAt && Date.now()-Date.parse(friend.lastSeenAt)<5*60*1000)
+const online=(friend:FriendSummary) => !friend.isBlocked && (friend.isOnline ?? (!!friend.lastSeenAt && Date.now()-Date.parse(friend.lastSeenAt)<5*60*1000))
 const sorted=computed(()=>[...friends.value].sort((a,b)=>Number(online(b))-Number(online(a)) || a.nickname.localeCompare(b.nickname,'ru')))
 const onlineCount=computed(()=>friends.value.filter(online).length)
 const level=(friend:FriendSummary) => friend.warRating && friend.warRating.level>=1 && friend.warRating.level<=10 ? friend.warRating.level : 0
@@ -59,9 +59,9 @@ onUnmounted(()=>{disposed=true;if(timer)clearInterval(timer);window.removeEventL
         <p v-else-if="loading && !friends.length" class="friends-panel-message" role="status">Загружаем друзей…</p>
         <div v-else-if="friends.length" class="header-friends-list">
           <RouterLink v-for="friend in sorted" :key="friend.id" class="header-friend" :to="{ name:'profile',params:{nickname:friend.nickname} }" @click="opened=false">
-            <span class="header-friend-avatar"><img v-if="friend.avatarUrl" :src="friend.avatarUrl" alt="" /><span v-else>{{ friend.nickname.slice(0,1).toUpperCase() }}</span><i :class="{ 'is-online': online(friend) }" :aria-label="online(friend) ? 'В сети' : 'Не в сети'"></i></span>
-            <span class="header-friend-name"><strong>{{ friend.nickname }}</strong><small :class="{ 'is-online':online(friend) }">{{ online(friend) ? 'В сети' : 'Не в сети' }}</small></span>
-            <span class="header-friend-rating" v-tooltip="level(friend) ? `Уровень ${level(friend)}` : 'Unknown'"><img :src="`/icons/levels/level-${level(friend)}.svg`" :alt="level(friend) ? `Уровень ${level(friend)}` : 'Unknown'" /><span>{{ friend.warRating?.elo ?? '—' }} <small>ELO</small></span></span>
+            <span class="header-friend-avatar"><img v-if="friend.avatarUrl" :src="friend.avatarUrl" alt="" /><span v-else>{{ friend.nickname.slice(0,1).toUpperCase() }}</span><i :class="{ 'is-online': online(friend), 'is-blocked':friend.isBlocked }" :aria-label="friend.isBlocked ? 'Заблокирован' : online(friend) ? 'В сети' : 'Не в сети'"></i></span>
+            <span class="header-friend-name"><strong>{{ friend.nickname }}</strong><small :class="{ 'is-online':online(friend), 'is-blocked':friend.isBlocked }">{{ friend.isBlocked ? 'Заблокирован' : online(friend) ? 'В сети' : 'Не в сети' }}</small></span>
+            <span v-if="!friend.isBlocked" class="header-friend-rating" v-tooltip="level(friend) ? `Уровень ${level(friend)}` : 'Unknown'"><img :src="`/icons/levels/level-${level(friend)}.svg`" :alt="level(friend) ? `Уровень ${level(friend)}` : 'Unknown'" /><span>{{ friend.warRating?.elo ?? '—' }} <small>ELO</small></span></span>
           </RouterLink>
         </div>
         <p v-else class="friends-panel-message">Пока нет друзей. Найдите знакомых игроков и добавьте их в друзья.</p>
@@ -91,10 +91,12 @@ onUnmounted(()=>{disposed=true;if(timer)clearInterval(timer);window.removeEventL
 .header-friend-avatar>img,.header-friend-avatar>span { display:grid; place-items:center; width:34px; height:34px; border-radius:50%; object-fit:cover; background:var(--surface-tint); color:var(--yellow); font-size:12px; font-weight:600; }
 .header-friend-avatar i { position:absolute; right:-1px; bottom:-1px; width:10px; height:10px; border:2px solid var(--panel); border-radius:50%; background:var(--subtle); }
 .header-friend-avatar i.is-online { background:#1fbd84; }
+.header-friend-avatar i.is-blocked { background:#e05260; }
 .header-friend-name { display:grid; flex:1; min-width:0; gap:5px; }
 .header-friend-name strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; font-weight:600; }
 .header-friend-name small { font-size:9px; color:var(--subtle); }
 .header-friend-name small.is-online { color:#15976c; }
+.header-friend-name small.is-blocked { color:#e05260; }
 .header-friend-rating { display:flex; align-items:center; gap:6px; flex-shrink:0; font-size:11px; white-space:nowrap; }
 .header-friend-rating>img { width:25px; height:25px; }
 .header-friend-rating small { color:var(--subtle); font-size:8px; }

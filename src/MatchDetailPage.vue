@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ArrowLeft, Clock3, Crosshair, Map as MapIcon, Radio, Server, Shield, Swords, Users } from '@lucide/vue'
+import { ArrowLeft, Clock3, Crosshair, Map as MapIcon, Radio, Server, Shield, Swords, Trophy, Users } from '@lucide/vue'
 import Pusher from 'pusher-js'
 import { getGameMatch } from './api'
 import type { GameMatchDetails, MatchPlayer } from './api'
 import PageLoader from './components/PageLoader.vue'
 import { aggregateSeriesPlayers } from './seriesStatistics.mjs'
+import { hasCompleteMvpStats, selectMatchMvp } from './matchMvp.mjs'
 import { matchMapImage } from './matchArtwork'
 import { formatMatchDuration } from './matchDuration'
 
@@ -48,6 +49,20 @@ const resultTeams = computed(() => {
   if (!selected) return []
   return [{ side: 'CT', name: selected.teamCt.name || 'Спецназ', players: selected.playersCt }, { side: 'T', name: selected.teamT.name || 'Террористы', players: selected.playersT }]
 })
+
+const mvpPlayer = computed(() => {
+  const current = match.value
+  if (!current || current.status !== 'finished') return null
+  if (current.scoreType !== 'maps') return selectMatchMvp([...current.playersCt, ...current.playersT])
+  const players = resultTeams.value.flatMap(team => team.players)
+  if (selectedStatsTab.value !== 0) return selectMatchMvp(players)
+  // A map MVP flag cannot be reused as the MVP of the entire series.
+  if (!current.seriesPlayerStats.length || current.seriesPlayerStats.length < current.seriesResults.length
+    || !current.seriesPlayerStats.every(map => hasCompleteMvpStats([...map.playersCt, ...map.playersT]))) return null
+  return selectMatchMvp(players, { preferReported: false })
+})
+const mvpLabel = computed(() => match.value?.scoreType === 'maps'
+  ? selectedStatsTab.value === 0 ? 'MVP серии' : 'MVP карты' : 'MVP матча')
 
 const mapImage = computed(() => {
   return match.value ? matchMapImage(match.value.map) : null
@@ -266,7 +281,20 @@ onUnmounted(() => {
               <tbody v-for="team in (match.scoreType === 'maps' ? resultTeams : teams)" :key="team.side">
                 <tr class="match-results-team"><th colspan="13" scope="rowgroup"><span class="match-results-side" :class="`is-${team.side.toLowerCase()}`">{{ team.side }}</span><strong>{{ team.name }}</strong><small>Сторона {{ team.side }} · игроков: {{ team.players.length }}</small></th></tr>
                 <tr v-for="(player, index) in team.players" :key="`${index}-${player.name}`">
-                  <th scope="row"><span class="match-results-player"><img v-if="player.account?.avatarUrl" class="match-player-avatar" :src="player.account.avatarUrl" :alt="player.account.nickname" /><span v-else class="match-player-avatar">{{ initials(player.name) }}</span><span class="match-player-label"><RouterLink v-if="player.account" :to="player.account.profileUrl">{{ player.account.nickname }}</RouterLink><strong v-else>{{ player.name }}</strong><small v-if="player.account && player.account.nickname !== player.name">Игровой ник: {{ player.name }}</small></span></span></th>
+                  <th scope="row">
+                    <span class="match-results-player">
+                      <img v-if="player.account?.avatarUrl" class="match-player-avatar" :src="player.account.avatarUrl" :alt="player.account.nickname" />
+                      <span v-else class="match-player-avatar">{{ initials(player.name) }}</span>
+                      <span class="match-player-label">
+                        <span class="match-player-name-line">
+                          <RouterLink v-if="player.account" :to="player.account.profileUrl">{{ player.account.nickname }}</RouterLink>
+                          <strong v-else>{{ player.name }}</strong>
+                          <span v-if="player === mvpPlayer" v-tooltip="mvpLabel" class="match-mvp-badge" role="img" :aria-label="mvpLabel" tabindex="0"><Trophy :size="12" aria-hidden="true" /><span aria-hidden="true">MVP</span></span>
+                        </span>
+                        <small v-if="player.account && player.account.nickname !== player.name">Игровой ник: {{ player.name }}</small>
+                      </span>
+                    </span>
+                  </th>
                   <td>{{ playerStat(player, 'kills') }}</td><td>{{ playerStat(player, 'deaths') }}</td><td>{{ playerDonutStat(player, 'assists') }}</td><td>{{ playerDonutStat(player, 'headshots') }}</td><td>{{ playerDonutStat(player, 'kd') }}</td><td>{{ playerDonutStat(player, 'hsPercent') }}</td><td>{{ playerDonutStat(player, 'adr') }}</td><td>{{ playerDonutStat(player, 'damage') }}</td><td>{{ playerDonutStat(player, 'entry') }}</td><td>{{ playerDonutStat(player, 'triples') }}</td><td>{{ playerDonutStat(player, 'quadros') }}</td><td>{{ playerDonutStat(player, 'aces') }}</td>
                 </tr>
                 <tr v-if="!team.players.length"><td colspan="13" class="match-results-empty">Данные об игроках этой стороны не получены.</td></tr>

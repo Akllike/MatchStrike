@@ -291,11 +291,11 @@ onMounted(loadPage)
         <div class="friend-avatar-wrap">
           <img v-if="friend.avatarUrl" class="friend-avatar" :src="friend.avatarUrl" alt="" />
           <span v-else class="friend-avatar friend-avatar-fallback">{{ friend.nickname.slice(0, 1).toUpperCase() }}</span>
-          <i class="friend-presence-dot" :class="{ 'is-online': isOnline(friend.lastSeenAt) }"></i>
+          <i class="friend-presence-dot" :class="{ 'is-online': !friend.isBlocked && isOnline(friend.lastSeenAt), 'is-blocked': friend.isBlocked }"></i>
         </div>
         <div class="friend-details">
           <strong>{{ friend.nickname }}</strong>
-          <span class="friend-last-seen" :class="{ 'is-online': isOnline(friend.lastSeenAt) }"><Clock3 :size="13" /> {{ lastSeenLabel(friend.lastSeenAt) }}</span>
+          <span class="friend-last-seen" :class="{ 'is-online': !friend.isBlocked && isOnline(friend.lastSeenAt), 'is-blocked': friend.isBlocked }"><Clock3 :size="13" /> {{ friend.isBlocked ? 'Заблокирован' : lastSeenLabel(friend.lastSeenAt) }}</span>
         </div>
         <div class="friend-actions">
           <RouterLink class="friend-action friend-profile-action" :to="{ name: 'profile', params: { nickname: friend.nickname } }"><UserRound :size="15" /> Профиль</RouterLink>

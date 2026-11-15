@@ -32,7 +32,9 @@ export function aggregateSeriesPlayers(maps, teamAName, teamBName) {
         }
         if (stats) {
           if (!current.donutStats) {
-            current.donutStats = structuredClone(stats)
+            // Vue exposes these objects through reactive proxies, which structuredClone rejects.
+            // Nested counters are rebuilt below; the remaining fields are read-only.
+            current.donutStats = { ...stats }
             for (const field of additiveFields) delete current.donutStats[field]
             delete current.donutStats.weapons
             delete current.donutStats.clutchesByX

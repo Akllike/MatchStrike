@@ -206,6 +206,12 @@ export interface GameMatch {
   durationSeconds?: number | null
   playerSide?: 'ct' | 't' | null
   playerResult?: 'win' | 'loss' | 'draw' | null
+  playerScore?: number | null
+  opponentScore?: number | null
+  playerStats?: {
+    kills: number | null; deaths: number | null; assists: number | null
+    kdr: number | null; adr: number | null; kast: number | null; elo: number | null; level: number | null
+  } | null
 }
 
 export interface PlayerMatchesPage {
@@ -368,6 +374,7 @@ export interface PlayerProfile {
   matchActivity: { total: number; days: { date: string; count: number }[] } | null
   friends: FriendSummary[]
   recentMatches: GameMatch[]
+  recentMatchesByMode?: { Mix: GameMatch[]; War: GameMatch[] }
   mapWinRates: MapWinRate[]
   weaponCatalog: CssWeapon[]
 }
@@ -437,6 +444,7 @@ export interface FriendSummary {
   nickname: string
   avatarUrl: string | null
   lastSeenAt: string | null
+  isBlocked?: boolean
   isOnline?: boolean
   warRating?: { elo: number; level: number } | null
 }
@@ -843,8 +851,9 @@ export async function logoutAccount(): Promise<void> {
   await postAuth('logout')
 }
 
-export async function getPlayerMatches(nickname: string, page = 1): Promise<PlayerMatchesPage> {
+export async function getPlayerMatches(nickname: string, page = 1, mode?: 'Mix' | 'War'): Promise<PlayerMatchesPage> {
   const params = new URLSearchParams({ page: String(page) })
+  if (mode) params.set('mode', mode)
   const response = await apiFetch(`${apiBaseUrl}/users/${encodeURIComponent(nickname)}/matches?${params}`, {
     credentials: 'include',
     headers: { Accept: 'application/json' },

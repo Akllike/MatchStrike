@@ -1,6 +1,10 @@
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Onest:wght@400;500;600;700&display=swap');
 @reference 'tailwindcss';
 
+.friend-last-seen.is-blocked { color:#dc4757; }
+.friend-presence-dot.is-blocked { background:#dc4757; }
+.dark .friend-last-seen.is-blocked { color:#f1818a; }
+
 :root {
   font-family: 'Onest', sans-serif;
   color: #172436;
@@ -572,6 +576,9 @@ input[type='checkbox'], input[type='radio'], input[type='range'] { accent-color:
 .match-player-label small { color: var(--muted); font-size: 10px; font-weight: 500; }
 .match-player-label .match-player-self { color: var(--yellow); font-weight: 700; }
 .match-results-player .match-player-label { display: flex; }
+.match-player-name-line { display: flex; min-width: 0; align-items: center; gap: 7px; }
+.match-mvp-badge { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; padding: 3px 5px; border-radius: 5px; background: rgb(202 138 4 / 12%); color: #946200; font-size: 9px; font-weight: 700; line-height: 1; letter-spacing: .03em; }
+.dark .match-mvp-badge { color: #eab308; background: rgb(234 179 8 / 12%); }
 
 .home-recent-matches { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 18px; }
 .home-match-column { min-width: 0; padding: 18px; border: 1px solid var(--line-soft); border-radius: 14px; background: var(--panel); box-shadow: var(--shadow-soft); }
