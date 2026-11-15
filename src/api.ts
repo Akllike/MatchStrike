@@ -108,6 +108,7 @@ export interface AuthUser {
   avatarUrl: string | null
   coverUrl: string | null
   socialLinks: SocialLinks
+  warRating?: { elo: number; level: number } | null
 }
 
 export interface AdminOverviewStats {
@@ -436,6 +437,8 @@ export interface FriendSummary {
   nickname: string
   avatarUrl: string | null
   lastSeenAt: string | null
+  isOnline?: boolean
+  warRating?: { elo: number; level: number } | null
 }
 
 export interface IncomingFriendRequest {

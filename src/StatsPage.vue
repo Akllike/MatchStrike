@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { Search, X, ChevronLeft, ChevronRight, Activity } from '@lucide/vue'
+import { ChevronLeft, ChevronRight, Activity, UsersRound } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getDonutStatsPlayers, getStatsPlayers } from './api'
+import SearchField from './components/SearchField.vue'
+import PageLoader from './components/PageLoader.vue'
 import type { DonutStatsLeaderboardPage, StatsPlayersPage } from './api'
 
 interface Player {
@@ -81,10 +83,23 @@ onBeforeUnmount(() => { ++requestId; window.clearTimeout(timer) })
   <section class="content-section route-section" aria-labelledby="player-stats-title">
     <div class="section-heading"><div><div class="section-kicker">{{ isWar ? 'DONUTSTATS / WAR' : 'MATCHSTRIKE / LEADERBOARD' }}</div><h2 id="player-stats-title">{{ isWar ? 'Рейтинг War' : 'Общая статистика игроков' }}</h2></div><span v-if="total" class="section-count">{{ String(total).padStart(2, '0') }} <span>ИГРОКОВ</span></span></div>
     <div v-if="hasServers" class="ranking-source" role="group" aria-label="Источник рейтинга"><button type="button" :aria-pressed="isWar" @click="selectSource('war')">War</button><button type="button" :aria-pressed="!isWar" @click="selectSource('servers')">Серверы</button></div>
+    <div class="ranking-toolbar"><SearchField id="ranking-player-search" v-model="search" :disabled="initializing" :maxlength="100" label="Поиск по никнейму или Steam ID" /><span v-if="loading" class="stats-updated" role="status">{{ search.trim() ? 'Ищем игроков…' : 'Загружаем статистику…' }}</span></div>
+    <Transition name="profile-content" mode="out-in">
+    <PageLoader v-if="loading" key="loading" message="Загружаем статистику…" />
+    <div v-else-if="error" key="error" class="admin-error" role="alert">
+      <strong>Не удалось загрузить статистику</strong><span>{{ error }}</span>
+      <button class="friend-action" type="button" @click="loadPage()">Повторить</button>
+    </div>
+    <div v-else-if="!players.length" key="empty" class="empty-state section-empty" role="status">
+      <span class="empty-icon"><UsersRound :size="22" :stroke-width="1.5" /></span>
+      <div>
+        <strong>{{ search.trim() ? 'Игроки не найдены' : 'Игроков в статистике пока нет' }}</strong>
+        <span>{{ search.trim() ? 'Попробуйте изменить никнейм или Steam ID в поиске.' : isWar ? 'Статистика появится после первых завершённых War-матчей.' : 'Статистика появится, когда серверы передадут данные об игроках.' }}</span>
+      </div>
+    </div>
+    <div v-else key="results">
     <div class="ranking-card">
-      <div class="ranking-toolbar"><label class="ranking-search"><Search :size="16" aria-hidden="true" /><input id="ranking-player-search" v-model="search" :disabled="initializing" type="search" maxlength="100" autocomplete="off" aria-label="Поиск по никнейму или Steam ID" placeholder="Поиск по никнейму или Steam ID" /><button v-if="search" type="button" aria-label="Очистить поиск" @click="search = ''"><X :size="16" /></button></label><span v-if="loading" class="stats-updated" role="status">{{ search.trim() ? 'Ищем игроков…' : 'Загружаем статистику…' }}</span></div>
-      <p v-if="!players.length || error" class="stats-no-data" role="status">{{ loading ? 'Загрузка результатов…' : error ? 'Нет данных' : search.trim() ? 'Игроки не найдены' : 'Нет данных' }}</p>
-      <div v-else class="player-stats-wrap ranking-table-wrap">
+      <div class="player-stats-wrap ranking-table-wrap">
         <table class="player-stats-table stats-player-table">
           <thead><tr><th scope="col">#</th><th scope="col">Игрок</th><template v-if="isWar"><th scope="col">Убийства</th><th scope="col">Смерти</th><th scope="col">ELO</th><th scope="col" v-tooltip="'Количество убийств в голову'">HS</th><th scope="col" v-tooltip="'Убийства / смерти'">KDR</th><th scope="col" v-tooltip="'Среднее число убийств за матч'">AVG</th><th scope="col" v-tooltip="'Средний урон за раунд'">ADR</th><th scope="col" v-tooltip="'Доля раундов с убийством, ассистом, выживанием или разменом'">KAST</th><th scope="col">Матчи</th><th scope="col" v-tooltip="'Доля выигранных матчей'">Winrate</th></template><template v-else><th scope="col">Лучший ранг</th><th scope="col">Убийства</th><th scope="col">Смерти</th><th scope="col">KDR</th><th scope="col">Очки</th></template></tr></thead>
           <tbody><tr v-for="(player,index) in players" :key="player.id">
@@ -98,22 +113,14 @@ onBeforeUnmount(() => { ++requestId; window.clearTimeout(timer) })
       </div>
     </div>
     <div v-if="lastPage > 1" class="stats-pagination" aria-label="Страницы статистики"><button class="stats-page-button" type="button" aria-label="Предыдущая страница" :disabled="loading || page <= 1" @click="changePage(page - 1)"><ChevronLeft :size="16" /></button><span>Страница {{ page }} из {{ lastPage }} · {{ total }} игроков</span><button class="stats-page-button" type="button" aria-label="Следующая страница" :disabled="loading || page >= lastPage" @click="changePage(page + 1)"><ChevronRight :size="16" /></button></div>
+    </div>
+    </Transition>
   </section>
 </template>
 
 <style scoped>
 .ranking-card { overflow:hidden; border-radius:9px; background:var(--panel); box-shadow:var(--shadow-soft); }
-.ranking-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:16px; }
-.ranking-search { display:flex; align-items:center; gap:10px; flex:0 1 420px; min-width:0; padding:0 13px; min-height:42px; border-radius:10px; color:var(--subtle); background:var(--surface-tint); transition:box-shadow .15s; }
-.ranking-search > svg { flex:0 0 auto; }
-#ranking-player-search, #ranking-player-search:focus, #ranking-player-search:disabled { flex:1; min-width:0; width:100%; min-height:42px; height:42px; margin:0; padding:0; border:0; border-radius:0; outline:none; box-shadow:none; color:var(--text); background:transparent; font:inherit; font-size:11px; }
-#ranking-player-search::placeholder { color:var(--subtle); opacity:1; }
-#ranking-player-search:disabled { cursor:wait; opacity:.6; }
-.ranking-search input::-webkit-search-cancel-button { display:none; }
-.ranking-search:focus-within { box-shadow:0 0 0 2px var(--yellow); }
-.ranking-search button { display:grid; flex:0 0 auto; place-items:center; width:25px; height:25px; border:0; border-radius:7px; padding:0; background:transparent; color:var(--muted); cursor:pointer; }
-.ranking-search button:hover { color:var(--text); background:var(--panel); }
-@media(max-width:520px) { .ranking-toolbar { padding:12px; }.ranking-search { flex-basis:100%; } }
+.ranking-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-bottom:16px; }
 .ranking-table-wrap { border-radius:0; box-shadow:none; }
 .ranking-level-icon { width:25px; height:25px; flex:0 0 auto; object-fit:contain; }
 .ranking-source { display:flex; gap:5px; margin-bottom:12px; }

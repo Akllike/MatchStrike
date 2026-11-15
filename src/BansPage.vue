@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { Ban, LoaderCircle, RefreshCw, Search, UserRound } from '@lucide/vue'
+import { Ban, LoaderCircle, RefreshCw, UserRound } from '@lucide/vue'
 import { getBans } from './api'
 import type { BanStatusFilter, SourceBan } from './api'
 import PageLoader from './components/PageLoader.vue'
+import SearchField from './components/SearchField.vue'
 
 const bans = ref<SourceBan[]>([])
 const connected = ref(false)
@@ -102,10 +103,7 @@ onUnmounted(() => {
     </div>
 
     <div class="bans-toolbar">
-      <label class="bans-search">
-        <Search :size="16" aria-hidden="true" />
-        <input v-model="search" type="search" maxlength="100" placeholder="Никнейм, Steam ID или причина" aria-label="Поиск по банам" />
-      </label>
+      <SearchField v-model="search" :maxlength="100" label="Поиск по банам" placeholder="Никнейм, Steam ID или причина" />
       <button class="admin-server-icon-button bans-refresh" type="button" :disabled="loading" aria-label="Обновить список банов" v-tooltip="'Обновить список'" @click="load()"><RefreshCw :size="15" :class="{ 'is-spinning': loading }" /></button>
     </div>
 

@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Activity, Ban, CircleHelp, Database, Gamepad2, Image, KeyRound, Link2, Pencil, Plus, RefreshCw, Search, Settings, ShieldCheck, Terminal, Trash2, Users, X, ChevronLeft, ChevronRight } from '@lucide/vue'
 import PageLoader from './components/PageLoader.vue'
+import SearchField from './components/SearchField.vue'
 import TicketWorkspace from './components/TicketWorkspace.vue'
 import AdminSubnav from './components/AdminSubnav.vue'
 import { setServerLobbyMode, setServerLobbyMaps, getServerLobbyMaps } from './api'
@@ -844,10 +845,7 @@ watch(section, (next, previous) => {
       <span class="section-count">{{ users.length.toString().padStart(2, '0') }} <span>НАЙДЕНО</span></span>
     </div>
     <form class="admin-user-search" role="search" @submit.prevent="searchUsers">
-      <label class="auth-field">
-        <span>Никнейм, email или роль</span>
-        <input v-model.trim="usersSearch" class="auth-input" type="search" maxlength="100" placeholder="Например, phenom или Developer" />
-      </label>
+      <SearchField v-model.trim="usersSearch" :maxlength="100" label="Никнейм, email или роль" placeholder="Поиск по никнейму, email или роли" />
       <label class="auth-field">
         <span>Фильтр по роли</span>
         <select v-model="usersRoleFilter" class="auth-input">
@@ -942,7 +940,7 @@ watch(section, (next, previous) => {
       <span class="section-count">{{ adminBanTotal.toLocaleString('ru-RU') }} <span>ЗАПИСЕЙ</span></span>
     </div>
     <form class="admin-ban-search" role="search" @submit.prevent="searchAdminBans">
-      <label class="auth-field"><span>Поиск по нику, Steam ID, IP или причине</span><input v-model.trim="adminBanSearch" class="auth-input" type="search" maxlength="100" placeholder="Например, STEAM_0:0:…" /></label>
+      <SearchField v-model.trim="adminBanSearch" :maxlength="100" label="Поиск по нику, Steam ID, IP или причине" />
       <button class="friend-action admin-user-search-submit" type="submit" :disabled="adminBansLoading"><Search :size="14" /> Найти</button>
       <button class="friend-action admin-server-icon-button" type="button" aria-label="Обновить список" v-tooltip="'Обновить список'" :disabled="adminBansLoading" @click="loadAdminBans"><RefreshCw :size="14" :class="{ 'is-spinning': adminBansLoading }" /></button>
     </form>

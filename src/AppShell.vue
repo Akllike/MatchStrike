@@ -8,7 +8,7 @@ import {
   ArrowUpRight,
   Ban,
   Bell,
-  ChevronDown,
+  EllipsisVertical,
   CircleHelp,
   Gamepad2,
   LogIn,
@@ -27,6 +27,7 @@ import {
 } from '@lucide/vue'
 import { ApiRequestError, clearAppNotifications, getAppNotifications, getCurrentUser, getNotificationSettings, loginAccount, logoutAccount, markAllAppNotificationsRead, markAppNotificationRead, registerAccount, savePushSubscription } from './api'
 import BrandMark from './components/BrandMark.vue'
+import HeaderFriends from './components/HeaderFriends.vue'
 import type { AppNotification, AuthUser, LoginPayload, NotificationSettings, RegisterPayload } from './api'
 import { adminLandingPath } from './adminAccess'
 
@@ -35,9 +36,11 @@ type AuthMode = 'login' | 'register' | 'help' | 'privacy' | 'required' | null
 interface Account {
   id: number
   nickname: string
+  steamId: AuthUser['steamId']
   adminRole: AuthUser['adminRole']
   avatarUrl?: string
   initials: string
+  warRating: AuthUser['warRating']
 }
 
 const route = useRoute()
@@ -56,6 +59,9 @@ const authRedirect = ref<string | null>(null)
 const profileMenuOpen = ref(false)
 const profileWrap = ref<HTMLElement | null>(null)
 const notificationsOpen = ref(false)
+const headerFriendsOpen = ref(false)
+watch(headerFriendsOpen, opened => { if (opened) { profileMenuOpen.value=false; notificationsOpen.value=false } })
+watch([profileMenuOpen, notificationsOpen], values => { if (values.some(Boolean)) headerFriendsOpen.value=false })
 const notificationsWrap = ref<HTMLElement | null>(null)
 const notifications = ref<AppNotification[]>([])
 const notificationsLoading = ref(false)
@@ -432,9 +438,11 @@ function accountFromUser(user: AuthUser): Account {
   return {
     id: user.id,
     nickname: user.nickname,
+    steamId: user.steamId,
     adminRole: user.adminRole,
     avatarUrl: user.avatarUrl ?? undefined,
     initials: user.nickname.slice(0, 1).toUpperCase(),
+    warRating: user.warRating !== undefined ? user.warRating : currentUser.value?.id === user.id ? currentUser.value.warRating : null,
   }
 }
 
@@ -785,6 +793,7 @@ onBeforeUnmount(() => {
           :key="item.id"
           :to="item.to"
           class="nav-link"
+          :class="{ 'is-active': route.path === item.to || route.path.startsWith(`${item.to}/`) }"
           :aria-label="item.label"
           v-tooltip="sidebarCollapsed ? item.label : undefined"
           active-class="is-active"
@@ -792,7 +801,7 @@ onBeforeUnmount(() => {
         >
           <span class="nav-icon"><component :is="item.icon" :size="18" :stroke-width="1.8" /></span>
           <span class="nav-label">{{ item.label }}</span>
-          <ArrowUpRight v-if="route.name === item.id" class="nav-arrow" :size="14" />
+          <ArrowUpRight v-if="route.path === item.to || route.path.startsWith(`${item.to}/`)" class="nav-arrow" :size="14" />
         </RouterLink>
       </nav>
 
@@ -844,9 +853,20 @@ onBeforeUnmount(() => {
             <button class="register-button" type="button" @click="openAuth('register')"><UserPlus :size="16" /><span>Регистрация</span></button>
           </template>
           <template v-else>
+          <HeaderFriends v-model:open="headerFriendsOpen" :user-id="currentUser.id" />
+          <div ref="profileWrap" class="profile-wrap topbar-account">
+            <RouterLink class="profile-button" :to="profileLink" :aria-label="`Открыть профиль ${currentUser.nickname}`" @click="profileMenuOpen = false; notificationsOpen = false">
+              <img v-if="currentUser.avatarUrl" class="profile-avatar" :src="currentUser.avatarUrl" alt="" />
+              <span v-else class="profile-avatar profile-initials">{{ currentUser.initials }}</span>
+              <span class="profile-button-copy">
+                <span class="profile-nickname">{{ currentUser.nickname }}</span>
+                <span v-if="currentUser.steamId?.trim()" class="profile-button-rating"><img :src="`/icons/levels/level-${currentUser.warRating && currentUser.warRating.level >= 1 && currentUser.warRating.level <= 10 ? currentUser.warRating.level : 0}.svg`" :alt="currentUser.warRating?.level ? `Уровень ${currentUser.warRating.level}` : 'Unknown'" /><span>{{ currentUser.warRating?.elo ?? '—' }} <small>ELO</small></span></span>
+              </span>
+
+            </RouterLink>
           <div ref="notificationsWrap" class="notifications-wrap">
             <button class="notifications-button" type="button" :aria-expanded="notificationsOpen" aria-haspopup="dialog" :aria-label="unreadNotificationCount ? `Уведомления, непрочитанных: ${unreadNotificationCount}` : 'Уведомления'" v-tooltip="unreadNotificationCount ? `Непрочитанных уведомлений: ${unreadNotificationCount}` : 'Уведомления'" @click="toggleNotifications">
-              <Bell :size="18" />
+              <Bell :size="14" fill="currentColor" :stroke-width="1.5" />
               <span v-if="unreadNotificationCount > 0" class="notification-unread-indicator" aria-hidden="true">
                 <span class="notification-ping motion-safe:animate-ping"></span>
                 <span class="notification-unread-dot"></span>
@@ -867,13 +887,7 @@ onBeforeUnmount(() => {
               </section>
             </Transition>
           </div>
-          <div ref="profileWrap" class="profile-wrap">
-            <button class="profile-button" type="button" :aria-expanded="profileMenuOpen" aria-haspopup="menu" @click="profileMenuOpen = !profileMenuOpen; notificationsOpen = false">
-              <img v-if="currentUser.avatarUrl" class="profile-avatar" :src="currentUser.avatarUrl" alt="" />
-              <span v-else class="profile-avatar profile-initials">{{ currentUser.initials }}</span>
-              <span class="profile-nickname">{{ currentUser.nickname }}</span>
-              <ChevronDown :size="15" />
-            </button>
+            <button class="profile-options-button" type="button" :aria-label="`Меню профиля ${currentUser.nickname}`" :aria-expanded="profileMenuOpen" aria-haspopup="menu" @click="profileMenuOpen = !profileMenuOpen; notificationsOpen = false"><EllipsisVertical :size="16" /></button>
             <Transition name="account-menu">
               <div v-if="profileMenuOpen" class="profile-menu" role="menu">
                 <RouterLink :to="profileLink" role="menuitem" @click="profileMenuOpen = false"><UserRound :size="15" /> Профиль <ArrowUpRight :size="14" /></RouterLink>

@@ -57,12 +57,12 @@ const topToastTone = ref<'success' | 'warning'>('success')
 const socialErrors = ref<Record<string, string[]>>({})
 let topToastTimer: number | undefined
 const socialPlatforms = [
-  { id: 'telegram', label: 'Telegram', placeholder: 'username', icon: 'telegram-svgrepo-com.svg' },
-  { id: 'instagram', label: 'Instagram', placeholder: 'username', icon: 'instagram-1-svgrepo-com.svg' },
-  { id: 'youtube', label: 'YouTube', placeholder: '@handle или ID канала', icon: 'youtube-svgrepo-com.svg' },
-  { id: 'twitch', label: 'Twitch', placeholder: 'username', icon: 'twitch-v2-svgrepo-com.svg' },
-  { id: 'trovo', label: 'Trovo', placeholder: 'username', icon: 'trovo.svg' },
-  { id: 'boosty', label: 'Boosty', placeholder: 'username', icon: 'boosty.svg' },
+  { id: 'telegram', label: 'Telegram', placeholder: 'username' },
+  { id: 'instagram', label: 'Instagram', placeholder: 'username' },
+  { id: 'youtube', label: 'YouTube', placeholder: '@handle или ID канала' },
+  { id: 'twitch', label: 'Twitch', placeholder: 'username' },
+  { id: 'trovo', label: 'Trovo', placeholder: 'username' },
+  { id: 'boosty', label: 'Boosty', placeholder: 'username' },
 ] as const
 const socialForm = reactive({ telegram: '', instagram: '', youtube: '', twitch: '', trovo: '', boosty: '' })
 const steamErrors = ref<Record<string, string[]>>({})
@@ -775,7 +775,7 @@ onBeforeUnmount(() => {
       <form class="settings-block settings-form" @submit.prevent="saveSocialLinks">
         <p class="settings-description">Укажите имя пользователя или ID без полной ссылки. Ссылка на профиль соберётся автоматически. Оставьте поле пустым, чтобы скрыть соцсеть.</p>
         <div v-for="platform in socialPlatforms" :key="platform.id" class="social-platform-row">
-          <img class="social-platform-icon" :src="`/uploads/icons/${platform.icon}`" alt="" aria-hidden="true" width="30" height="30" loading="lazy" />
+          <img class="social-platform-icon" :src="`/icons/socials/64px/${platform.id}.png`" :srcset="`/icons/socials/128px/${platform.id}.png 2x`" alt="" aria-hidden="true" width="30" height="30" loading="lazy" />
           <label class="auth-field social-platform-field" :for="`social-${platform.id}`">
             <span>{{ platform.label }}</span>
             <input :id="`social-${platform.id}`" v-model.trim="socialForm[platform.id]" class="auth-input" type="text" autocomplete="off" :placeholder="platform.placeholder" maxlength="100" :aria-invalid="Boolean(errorFor(socialErrors, `socialLinks.${platform.id}`))" />

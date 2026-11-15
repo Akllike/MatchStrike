@@ -410,7 +410,7 @@ button {
 }
 button:disabled { cursor: not-allowed; }
 
-input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']),
+input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']):not(.site-search-input),
 select,
 textarea {
   border: 1px solid #cbd5e1;
@@ -423,10 +423,10 @@ textarea {
   line-height: 1.5;
   transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
 }
-input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']),
+input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']):not(.site-search-input),
 select { min-height: 40px; padding: 0 12px; }
 textarea { min-height: 100px; padding: 10px 12px; }
-input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']):focus,
+input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']):not(.site-search-input):focus,
 select:focus,
 textarea:focus {
   border-color: #0ea5e9;
@@ -435,7 +435,7 @@ textarea:focus {
 }
 input[aria-invalid='true'], textarea[aria-invalid='true'], select[aria-invalid='true'] { border-color: #e11d48; }
 input[aria-invalid='true']:focus, textarea[aria-invalid='true']:focus, select[aria-invalid='true']:focus { box-shadow: 0 0 0 3px rgba(225, 29, 72, .16); }
-input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']):disabled,
+input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']):not(.site-search-input):disabled,
 select:disabled, textarea:disabled { color: #64748b; border-color: #e2e8f0; background: #f8fafc; box-shadow: none; cursor: not-allowed; opacity: 1; }
 input[type='checkbox'], input[type='radio'], input[type='range'] { accent-color: #0284c7; }
 .auth-field { gap: 8px; color: #334155; font-size: 12px; font-weight: 500; line-height: 1.45; }
@@ -500,7 +500,7 @@ input[type='checkbox'], input[type='radio'], input[type='range'] { accent-color:
 }
 .stats-page-button, .admin-server-icon-button { width: 36px; height: 36px; border-radius: 6px; box-shadow: 0 1px 2px rgba(15, 23, 42, .05); }
 
-.dark input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']),
+.dark input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']):not(.site-search-input),
 .dark select,
 .dark textarea {
   border-color: #475569;
@@ -508,12 +508,12 @@ input[type='checkbox'], input[type='radio'], input[type='range'] { accent-color:
   background: #111c2c;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
 }
-.dark input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range'])::placeholder,
+.dark input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']):not(.site-search-input)::placeholder,
 .dark textarea::placeholder { color: #94a3b8; }
-.dark input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']):focus,
+.dark input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']):not(.site-search-input):focus,
 .dark select:focus,
 .dark textarea:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56, 189, 248, .22); }
-.dark input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']):disabled,
+.dark input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']):not([type='range']):not(.site-search-input):disabled,
 .dark select:disabled, .dark textarea:disabled { color: #94a3b8; border-color: #354357; background: #1c2838; box-shadow: none; }
 .dark input[type='checkbox'], .dark input[type='radio'], .dark input[type='range'] { accent-color: #7dd3e8; }
 .dark .auth-field { color: #cbd5e1; }
@@ -629,10 +629,6 @@ input[type='checkbox'], input[type='radio'], input[type='range'] { accent-color:
 
 /* Public SourceBans registry */
 .bans-toolbar { display: flex; align-items: center; gap: 9px; margin: 0 0 14px; }
-.bans-search { display: flex; min-width: 0; min-height: 40px; flex: 1; align-items: center; gap: 9px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--subtle); background: var(--panel); }
-.bans-search:focus-within { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,.12); }
-.bans-search input { width: 100%; min-width: 0; border: 0; outline: 0; color: var(--text); background: transparent; font: inherit; font-size: 12px; }
-.bans-search input::placeholder { color: var(--subtle); }
 .bans-refresh { display: grid; width: 40px; height: 40px; flex: 0 0 auto; place-items: center; }
 .bans-filter-tabs { display: flex; flex-wrap: wrap; gap: 7px; margin: 0 0 16px; }
 .bans-filter-tabs button { display: inline-flex; min-height: 33px; align-items: center; gap: 8px; padding: 6px 11px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); background: var(--panel); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; transition: border-color 150ms ease, color 150ms ease, background 150ms ease; }
@@ -651,7 +647,7 @@ input[type='checkbox'], input[type='radio'], input[type='range'] { accent-color:
 .bans-reason-cell { max-width: 240px; overflow-wrap: anywhere; }
 .bans-state { display: inline-flex; align-items: center; padding: 5px 8px; border-radius: 20px; color: #0f766e; background: #ccfbf1; font-size: 10px; font-weight: 700; white-space: nowrap; }
 .bans-state.is-expired { color: #64748b; background: #e2e8f0; }
-.dark .bans-search, .dark .bans-filter-tabs button, .dark .bans-table-wrap { border-color: var(--line); background: var(--panel); }
+.dark .bans-filter-tabs button, .dark .bans-table-wrap { border-color: var(--line); background: var(--panel); }
 .dark .bans-filter-tabs button[aria-pressed='true'] { color: #bae6fd; border-color: #365c77; background: #203b52; }
 .dark .bans-filter-tabs button[aria-pressed='true'] span { color: #7dd3e8; }
 .dark .bans-table th { color: var(--muted); background: #243448; }
@@ -670,9 +666,9 @@ a.bans-strip:hover { transform: translateY(-1px); box-shadow: 0 14px 32px -12px 
 a.bans-strip:focus-visible { outline: 2px solid #38bdf8; outline-offset: 3px; }
 
 /* Admin SourceBans management */
-.admin-ban-search { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: end; gap: 9px; margin-bottom: 13px; }
+.admin-ban-search { display: grid; grid-template-columns: minmax(0, 420px) auto auto; justify-content: start; align-items: end; gap: 9px; margin-bottom: 13px; }
 .admin-ban-search .auth-field { min-width: 0; }
-.admin-ban-search .friend-action { min-height: 38px; }
+.admin-ban-search .friend-action { min-height: 42px; }
 .admin-ban-filters { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 16px; }
 .admin-ban-filters button { display: inline-flex; min-height: 32px; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); background: var(--panel); font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
 .admin-ban-filters button span { color: var(--subtle); font-family: 'IBM Plex Sans', sans-serif; font-size: 10px; }
@@ -712,7 +708,7 @@ a.bans-strip:focus-visible { outline: 2px solid #38bdf8; outline-offset: 3px; }
 .dark .admin-ban-status.is-deleted { color: #fecaca; background: #7f1d1d; }
 @media (max-width: 640px) {
   .admin-ban-search { grid-template-columns: minmax(0, 1fr) auto; }
-  .admin-ban-search .auth-field { grid-column: 1 / -1; }
+  .admin-ban-search .site-search { grid-column: 1 / -1; }
   .admin-ban-filters { gap: 5px; }
   .admin-ban-filters button { flex: 1; justify-content: center; padding-inline: 6px; }
 }

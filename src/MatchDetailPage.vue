@@ -200,8 +200,8 @@ onUnmounted(() => {
         <div class="match-hero-art" aria-hidden="true">
           <img v-if="mapImage" :key="mapImage" class="match-hero-map" :src="mapImage" alt="" @load="mapImageLoaded = true" @error="onMapImageError" />
           <div class="match-hero-shade"></div>
-          <img class="match-hero-character is-ct" :src="'/uploads/maps/ct.png'" alt="" />
-          <img class="match-hero-character is-t" :src="'/uploads/maps/tt.png'" alt="" />
+          <img class="match-hero-character is-ct" src="/images/matches/ct.png" alt="" />
+          <img class="match-hero-character is-t" src="/images/matches/tt.png" alt="" />
         </div>
         <div class="match-hero-top"><span><Swords :size="14" /> {{ match.mode }} · {{ match.format || (match.mode === 'Mix' ? 'Classic' : 'Формат не указан') }}</span><span>МАТЧ #{{ match.id }}</span></div>
         <div class="match-hero-scoreboard">

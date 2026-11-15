@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Target, Search } from '@lucide/vue'
+import { Target } from '@lucide/vue'
+import SearchField from './SearchField.vue'
 import type { CssWeapon, WeaponUsageStats } from '../api'
 
 const props = defineProps<{ catalog: CssWeapon[]; stats: WeaponUsageStats | null }>()
@@ -45,7 +46,7 @@ const selectedMetrics = computed(() => {
 <template>
   <section class="weapons-explorer" aria-label="Оружие Counter-Strike Source v34">
     <header class="weapons-header"><div><span class="section-kicker">COUNTER-STRIKE: SOURCE</span><h3>Арсенал игрока</h3><p>{{ catalog.length }} видов оружия и снаряжения · только War</p></div><div class="weapons-coverage"><strong>{{ stats?.trackedMaps ?? 0 }}</strong><span>карт с детализацией</span></div></header>
-    <div class="weapons-filters"><label><Search :size="15" /><input v-model="search" placeholder="Найти оружие" aria-label="Поиск оружия" /></label><select v-model="sort" aria-label="Сортировка оружия"><option value="rounds">По использованию</option><option value="kills">По убийствам</option><option value="damage">По урону</option><option value="shots">По применениям</option></select></div>
+    <div class="weapons-filters"><SearchField v-model="search" label="Поиск оружия" placeholder="Найти оружие" /><select v-model="sort" aria-label="Сортировка оружия"><option value="rounds">По использованию</option><option value="kills">По убийствам</option><option value="damage">По урону</option><option value="shots">По применениям</option></select></div>
     <div class="weapons-categories" role="group" aria-label="Категория оружия"><button v-for="item in categories" :key="item.id" type="button" :aria-pressed="category === item.id" @click="category = item.id">{{ item.name }}</button></div>
     <p v-if="!available" class="weapons-note">В сохранённых матчах пока нет статистики по отдельному оружию. Значения появятся после матчей с обновлённым плагином.</p>
     <div class="weapons-layout">
@@ -57,7 +58,7 @@ const selectedMetrics = computed(() => {
 
 <style scoped>
 .weapons-explorer { margin-top:18px; }.weapons-header { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-bottom:18px; }.weapons-header h3 { margin:6px 0; color:var(--text); font-size:21px; letter-spacing:-.6px; }.weapons-header p { color:var(--muted); font-size:11px; }.weapons-coverage { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }.weapons-coverage strong { color:var(--text); font-size:25px; }.weapons-coverage span { color:var(--subtle); font-size:9px; }
-.weapons-filters { display:flex; gap:12px; margin-bottom:13px; }.weapons-filters label { display:flex; gap:9px; align-items:center; flex:1; padding:11px 13px; border-radius:10px; background:var(--panel); color:var(--muted); }.weapons-filters input { min-width:0; width:100%; outline:none; border:0; color:var(--text); background:transparent; font-size:11px; }.weapons-filters select { max-width:45%; border:0; padding:10px; border-radius:10px; background:var(--panel); color:var(--text); font-size:10px; }
+.weapons-filters { display:flex; gap:12px; margin-bottom:13px; }.weapons-filters select { max-width:45%; border:0; padding:10px; border-radius:10px; background:var(--panel); color:var(--text); font-size:10px; }
 .weapons-categories { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:18px; }.weapons-categories button { border:0; padding:9px 12px; border-radius:8px; color:var(--muted); background:var(--panel); font-size:10px; cursor:pointer; }.weapons-categories button[aria-pressed=true] { background:var(--surface-tint); color:var(--yellow); }
 .weapons-layout { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(270px,1fr); gap:17px; align-items:start; }.weapons-catalog { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; }.weapons-catalog>button { display:flex; min-width:0; flex-direction:column; align-items:flex-start; gap:10px; padding:16px 12px; border:0; border-radius:12px; background:var(--panel); color:var(--text); text-align:left; box-shadow:var(--shadow-soft); cursor:pointer; transition:transform .15s,background .15s; }.weapons-catalog>button svg { color:var(--subtle); }.weapons-catalog>button strong { font-size:12px; }.weapons-catalog>button span { color:var(--text); font-size:15px; font-weight:700; }.weapons-catalog small { font-size:8px; color:var(--muted); font-weight:400; }.weapons-catalog>button[aria-pressed=true] { background:var(--surface-tint); box-shadow:inset 0 -2px var(--yellow),var(--shadow-soft); }.weapons-catalog>button:hover { transform:translateY(-2px); }.weapons-catalog>button[aria-pressed=true] svg { color:var(--yellow); }
 .weapons-catalog i,.weapon-usage i { display:block; width:100%; height:4px; overflow:hidden; border-radius:5px; background:var(--line-soft); }.weapons-catalog i b,.weapon-usage i b { display:block; height:100%; border-radius:inherit; background:var(--yellow); transition:width .2s; }

@@ -2,7 +2,7 @@ export function matchMapImage(map: string): string | null {
   const match = /^(?:(de|cs)_)?([a-z0-9]+)(?:_[a-z0-9]+)*$/i.exec(map.trim())
   if (!match) return null
   const prefix = (match[1] || 'de').toLowerCase()
-  return `/uploads/maps/${prefix}_${match[2].toLowerCase()}.webp`
+  return `/images/maps/${prefix}_${match[2].toLowerCase()}.webp`
 }
 
 export function handleMapImageError(event: Event): void {

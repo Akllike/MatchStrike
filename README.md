@@ -71,7 +71,7 @@ Projects/
 
 ## Связь с API
 
-В [vite.config.ts](vite.config.ts) `/api/*` и `/uploads/*` проксируются на `http://127.0.0.1:8000`. При изменении порта API исправьте `server.proxy` и перезапустите Vite. Не смешивайте `localhost` и `127.0.0.1` при работе с cookie.
+В [vite.config.ts](vite.config.ts) `/api/*` и пользовательские загрузки `/uploads/profiles/*` проксируются на `http://127.0.0.1:8000`. При изменении порта API исправьте `server.proxy` и перезапустите Vite. Не смешивайте `localhost` и `127.0.0.1` при работе с cookie.
 
 Авторизация использует cookie-сеанс. Перед изменяющими запросами клиент получает CSRF-токен через `/api/v1/auth/csrf`. Секреты Reverb и bearer-токены игровых плагинов во фронтенде не хранятся.
 
@@ -127,7 +127,9 @@ Projects/
 | Логотипы и иконки приложения | `public/icons/symbols/` |
 | Значки уровней ELO | `public/icons/levels/` |
 | GIF окна недоступности | `public/other/cat-cat-dance.gif` |
-| Изображения карт | `/uploads/maps/` на API |
+| Изображения карт | `public/images/maps/` |
+| Персонажи в шапке матча | `public/images/matches/` |
+| Иконки социальных сетей | `public/icons/socials/` (64px, 128px, 256px) |
 
 Например, `de_dust2.webp` используется для `de_dust2_ob` и `dust2_2x2`. Для `cs_` префикс сохраняется; без префикса используется `de_`. Персонажи — `ct.png` и `tt.png` в той же папке API. Правила находятся в `src/matchArtwork.ts`.
 

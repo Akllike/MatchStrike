@@ -615,12 +615,12 @@ async function confirmRemoveFriend() {
 }
 
 const socialPlatforms = [
-  { id: 'telegram', label: 'Telegram', icon: 'telegram-svgrepo-com.svg' },
-  { id: 'instagram', label: 'Instagram', icon: 'instagram-1-svgrepo-com.svg' },
-  { id: 'youtube', label: 'YouTube', icon: 'youtube-svgrepo-com.svg' },
-  { id: 'twitch', label: 'Twitch', icon: 'twitch-v2-svgrepo-com.svg' },
-  { id: 'trovo', label: 'Trovo', icon: 'trovo.svg' },
-  { id: 'boosty', label: 'Boosty', icon: 'boosty.svg' },
+  { id: 'telegram', label: 'Telegram' },
+  { id: 'instagram', label: 'Instagram' },
+  { id: 'youtube', label: 'YouTube' },
+  { id: 'twitch', label: 'Twitch' },
+  { id: 'trovo', label: 'Trovo' },
+  { id: 'boosty', label: 'Boosty' },
 ] as const
 const visibleSocialPlatforms = computed(() => socialPlatforms.filter(({ id }) => profile.value?.socialLinks?.[id]))
 
@@ -772,7 +772,7 @@ watch(nickname, loadProfile, { immediate: true })
                 v-tooltip="`${platform.label} · ${socialUsername(platform.id)}`"
                 :aria-label="`Открыть ${platform.label}: ${socialUsername(platform.id)}`"
               >
-                <img :src="`/uploads/icons/${platform.icon}`" alt="" aria-hidden="true" width="38" height="38" loading="lazy" />
+                <img :src="`/icons/socials/64px/${platform.id}.png`" :srcset="`/icons/socials/128px/${platform.id}.png 2x`" alt="" aria-hidden="true" width="38" height="38" loading="lazy" />
               </a>
             </div>
             <p v-else class="profile-aside-note">Пользователь пока не добавил ссылки на социальные сети.</p>
