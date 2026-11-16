@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { websiteSettings } from './websiteSettings'
 import { ChevronLeft, ChevronRight, Activity, UsersRound } from '@lucide/vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getDonutStatsPlayers, getStatsPlayers } from './api'
@@ -81,7 +82,7 @@ onBeforeUnmount(() => { ++requestId; window.clearTimeout(timer) })
     <div class="route-intro-mark"><Activity :size="27" :stroke-width="1.5" /></div>
   </section>
   <section class="content-section route-section" aria-labelledby="player-stats-title">
-    <div class="section-heading"><div><div class="section-kicker">{{ isWar ? 'DONUTSTATS / WAR' : 'MATCHSTRIKE / LEADERBOARD' }}</div><h2 id="player-stats-title">{{ isWar ? 'Рейтинг War' : 'Общая статистика игроков' }}</h2></div><span v-if="total" class="section-count">{{ String(total).padStart(2, '0') }} <span>ИГРОКОВ</span></span></div>
+    <div class="section-heading"><div><div class="section-kicker">{{ isWar ? 'DONUTSTATS / WAR' : websiteSettings.name.toUpperCase() + ' / LEADERBOARD' }}</div><h2 id="player-stats-title">{{ isWar ? 'Рейтинг War' : 'Общая статистика игроков' }}</h2></div><span v-if="total" class="section-count">{{ String(total).padStart(2, '0') }} <span>ИГРОКОВ</span></span></div>
     <div v-if="hasServers" class="ranking-source" role="group" aria-label="Источник рейтинга"><button type="button" :aria-pressed="isWar" @click="selectSource('war')">War</button><button type="button" :aria-pressed="!isWar" @click="selectSource('servers')">Серверы</button></div>
     <div class="ranking-toolbar"><SearchField id="ranking-player-search" v-model="search" :disabled="initializing" :maxlength="100" label="Поиск по никнейму или Steam ID" /><span v-if="loading" class="stats-updated" role="status">{{ search.trim() ? 'Ищем игроков…' : 'Загружаем статистику…' }}</span></div>
     <Transition name="profile-content" mode="out-in">

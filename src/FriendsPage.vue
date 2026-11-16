@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SiteAlert from './components/SiteAlert.vue'
+import { websiteSettings } from './websiteSettings'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { Check, Clock3, Trash2, UserPlus, UserRound, Users, X } from '@lucide/vue'
 import {
@@ -30,19 +32,14 @@ const friendNickname = ref('')
 const sendingRequest = ref(false)
 const toastMessage = ref('')
 const toastTone = ref<ToastTone>('success')
-let toastTimeout: number | undefined
 
 function dismissToast() {
-  if (toastTimeout !== undefined) window.clearTimeout(toastTimeout)
-  toastTimeout = undefined
   toastMessage.value = ''
 }
 
 function showToast(message: string, tone: ToastTone) {
-  if (toastTimeout !== undefined) window.clearTimeout(toastTimeout)
   toastMessage.value = message
   toastTone.value = tone
-  toastTimeout = window.setTimeout(dismissToast, 5000)
 }
 
 onBeforeUnmount(dismissToast)
@@ -211,6 +208,8 @@ onMounted(loadPage)
 </script>
 
 <template>
+  <SiteAlert :message="toastMessage" :tone="toastTone" @close="dismissToast" />
+
   <Transition name="profile-content" mode="out-in">
     <PageLoader v-if="pageLoading" key="loading" message="Загружаем друзей…" />
     <div v-else key="content" class="friends-page-content">
@@ -218,14 +217,14 @@ onMounted(loadPage)
     <div class="welcome-copy">
       <div class="eyebrow"><span class="eyebrow-line"></span> COMMUNITY <span class="eyebrow-slash">/</span> FRIENDS</div>
       <h1 id="friends-page-title">Ваши <span>друзья</span></h1>
-      <p>Профили игроков, с которыми вы играете в MatchStrike.</p>
+      <p>Профили игроков, с которыми вы играете в {{ websiteSettings.name }}.</p>
     </div>
     <div class="route-intro-mark"><Users :size="27" :stroke-width="1.5" /></div>
   </section>
 
   <section class="content-section route-section" aria-labelledby="friend-add-title">
     <div class="section-heading">
-      <div><div class="section-kicker">MATCHSTRIKE / SOCIAL</div><h2 id="friend-add-title">Добавить друга</h2></div>
+      <div><div class="section-kicker">{{ websiteSettings.name.toUpperCase() }} / SOCIAL</div><h2 id="friend-add-title">Добавить друга</h2></div>
     </div>
     <form class="friend-add-form" @submit.prevent="addFriend">
       <label class="auth-field" for="friend-nickname">Никнейм игрока</label>
@@ -240,7 +239,7 @@ onMounted(loadPage)
 
   <section class="content-section route-section" aria-labelledby="friend-requests-title">
     <div class="section-heading">
-      <div><div class="section-kicker">MATCHSTRIKE / SOCIAL</div><h2 id="friend-requests-title">Входящие запросы</h2></div>
+      <div><div class="section-kicker">{{ websiteSettings.name.toUpperCase() }} / SOCIAL</div><h2 id="friend-requests-title">Входящие запросы</h2></div>
       <span class="section-count">{{ requests.length.toString().padStart(2, '0') }} <span>ЗАЯВОК</span></span>
     </div>
 
@@ -277,7 +276,7 @@ onMounted(loadPage)
 
   <section class="content-section route-section" aria-labelledby="friends-list-title">
     <div class="section-heading">
-      <div><div class="section-kicker">MATCHSTRIKE / SOCIAL</div><h2 id="friends-list-title">Список друзей</h2></div>
+      <div><div class="section-kicker">{{ websiteSettings.name.toUpperCase() }} / SOCIAL</div><h2 id="friends-list-title">Список друзей</h2></div>
       <span class="section-count">{{ friends.length.toString().padStart(2, '0') }} <span>ДРУЗЕЙ</span></span>
     </div>
 
@@ -313,17 +312,7 @@ onMounted(loadPage)
     </div>
   </Transition>
 
-  <Transition name="profile-toast">
-    <div v-if="toastMessage" class="profile-toast friends-toast" :class="`is-${toastTone}`" :role="toastTone === 'error' ? 'alert' : 'status'" aria-live="polite" aria-atomic="true">
-      <span class="profile-toast-icon motion-safe:animate-pulse">
-        <Check v-if="toastTone === 'success'" :size="15" :stroke-width="2.5" />
-        <X v-else-if="toastTone === 'error'" :size="15" :stroke-width="2.5" />
-        <UserPlus v-else :size="15" :stroke-width="2.5" />
-      </span>
-      <span class="profile-toast-message">{{ toastMessage }}</span>
-      <button class="profile-toast-close" type="button" aria-label="Закрыть уведомление" @click="dismissToast"><X :size="15" /></button>
-    </div>
-  </Transition>
+
   <Teleport to="body">
     <Transition name="modal">
       <div v-if="friendPendingRemoval" class="modal-backdrop" @click.self="closeRemoveFriendDialog">

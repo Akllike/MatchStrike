@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { websiteSettings } from './websiteSettings'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { Ban, LoaderCircle, UserRound } from '@lucide/vue'
 import { getBans } from './api'
@@ -91,7 +92,7 @@ onUnmounted(() => {
     <div class="welcome-copy">
       <div class="eyebrow"><span class="eyebrow-line"></span> БЕЗОПАСНОСТЬ СООБЩЕСТВА <span class="eyebrow-slash">/</span> MODERATION</div>
       <h1 id="bans-page-title">Баны <span>сообщества</span></h1>
-      <p>Список блокировок на игровых серверах MatchStrike.</p>
+      <p>Список блокировок на игровых серверах {{ websiteSettings.name }}.</p>
     </div>
     <div class="route-intro-mark"><Ban :size="27" :stroke-width="1.5" /></div>
   </section>

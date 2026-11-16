@@ -1,44 +1,35 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { Activity, Ban, CircleHelp, Gamepad2, Megaphone, Users, X } from '@lucide/vue'
-import { adminSections, canAccessAdmin } from '../adminAccess'
+import { Activity, ArrowLeft, ArrowUpRight, Ban, CircleHelp, Gamepad2, LayoutDashboard, Megaphone, ScrollText, Settings, Swords, Users } from '@lucide/vue'
+import { canAccessAdmin } from '../adminAccess'
+import type { AdminPermission } from '../adminAccess'
 import type { AdminRole } from '../api'
 
-const props = defineProps<{ role: AdminRole | null }>()
+const props = withDefaults(defineProps<{ role: AdminRole | null; collapsed?: boolean }>(), { collapsed: false })
+defineEmits<{ navigate: [] }>()
 const route = useRoute()
-
-const sectionIcons = {
-  users: Users,
-  tickets: CircleHelp,
-  servers: Gamepad2,
-  statistics: Activity,
-  bans: Ban,
-  mutes: X,
-} as const
+const items = [
+  { id: 'overview', label: 'Обзор', icon: LayoutDashboard, to: '/adminpanel' },
+  { id: 'users', label: 'Пользователи', icon: Users, to: '/adminpanel/users' },
+  { id: 'servers', label: 'Серверы', icon: Gamepad2, to: '/adminpanel/servers' },
+  { id: 'operations', label: 'Матчи и лобби', icon: Swords, to: '/adminpanel/operations' },
+  { id: 'tickets', label: 'Тикеты', icon: CircleHelp, to: '/adminpanel/tickets' },
+  { id: 'bans', label: 'Модерация', icon: Ban, to: '/adminpanel/bans' },
+  { id: 'statistics', label: 'Статистика', icon: Activity, to: '/adminpanel/statistics' },
+  { id: 'notifications', label: 'Уведомления', icon: Megaphone, to: '/notifications' },
+  { id: 'audit', label: 'Журнал действий', icon: ScrollText, to: '/adminpanel/audit' },
+  { id: 'settings', label: 'Настройки сайта', icon: Settings, to: '/adminpanel/settings' },
+] as const
+const visible = computed(() => items.filter(item => canAccessAdmin(props.role, item.id as AdminPermission)))
+const active = (id: string, path: string) => route.path === path || (id === 'bans' && route.path === '/adminpanel/mutes')
 </script>
 
 <template>
-  <nav v-if="props.role" class="admin-subnav" aria-label="Разделы админ панели">
-    <RouterLink
-      v-if="canAccessAdmin(props.role, 'overview')"
-      class="admin-subnav-link"
-      :class="{ 'is-active': route.name === 'adminpanel' }"
-      :to="{ name: 'adminpanel' }"
-    >Обзор</RouterLink>
-    <RouterLink
-      v-if="canAccessAdmin(props.role, 'notifications')"
-      class="admin-subnav-link"
-      :class="{ 'is-active': route.name === 'admin-notifications' }"
-      :to="{ name: 'admin-notifications' }"
-    ><Megaphone :size="14" /> Уведомления</RouterLink>
-    <RouterLink
-      v-for="item in adminSections.filter((entry) => canAccessAdmin(props.role, entry.id))"
-      :key="item.id"
-      class="admin-subnav-link"
-      :class="{ 'is-active': route.params.section === item.id && route.name === 'adminpanel-section' }"
-      :to="{ name: 'adminpanel-section', params: { section: item.id } }"
-    >
-      <component :is="sectionIcons[item.id]" :size="14" /> {{ item.label }}
+  <nav v-if="role" id="primary-navigation" class="main-nav admin-workspace-nav" aria-label="Разделы админ панели">
+    <RouterLink v-for="item in visible" :key="item.id" :to="item.to" class="nav-link" :class="{ 'is-active': active(item.id, item.to) }" :aria-current="active(item.id, item.to) ? 'page' : undefined" :aria-label="item.label" v-tooltip="collapsed ? item.label : undefined" @click="$emit('navigate')">
+      <span class="nav-icon"><component :is="item.icon" :size="18" :stroke-width="1.8" /></span><span class="nav-label">{{ item.label }}</span><ArrowUpRight v-if="active(item.id, item.to)" class="nav-arrow" :size="14" />
     </RouterLink>
+    <RouterLink to="/" class="nav-link admin-return-link" aria-label="Вернуться на сайт" v-tooltip="collapsed ? 'Вернуться на сайт' : undefined" @click="$emit('navigate')"><span class="nav-icon"><ArrowLeft :size="18" /></span><span class="nav-label">Вернуться на сайт</span></RouterLink>
   </nav>
 </template>

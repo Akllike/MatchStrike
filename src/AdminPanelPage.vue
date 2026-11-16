@@ -1,14 +1,25 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import SiteAlert from './components/SiteAlert.vue'
+import { websiteSettings } from './websiteSettings'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Activity, Ban, CircleHelp, Database, Gamepad2, Image, KeyRound, Link2, Pencil, Plus, RefreshCw, Search, Settings, ShieldCheck, Terminal, Trash2, Users, X, ChevronLeft, ChevronRight } from '@lucide/vue'
+import { Activity, Ban, CircleHelp, Gamepad2, Image, KeyRound, Link2, Pencil, Plus, RefreshCw, Search, Settings, ShieldCheck, Terminal, Trash2, Users, X, ChevronLeft, ChevronRight } from '@lucide/vue'
 import PageLoader from './components/PageLoader.vue'
 import SearchField from './components/SearchField.vue'
 import TicketWorkspace from './components/TicketWorkspace.vue'
-import AdminSubnav from './components/AdminSubnav.vue'
+import AdminDashboard from './components/AdminDashboard.vue'
+import AdminSiteStatistics from './components/AdminSiteStatistics.vue'
+import AdminOperations from './components/AdminOperations.vue'
+import AdminActivity from './components/AdminActivity.vue'
+import AdminSiteSettings from './components/AdminSiteSettings.vue'
+import { getWebsiteSettings } from './api'
+import type { WebsiteSettings } from './api'
+import { getAdminActivity, getAdminControlCenter, getAdminOperations } from './api'
+import type { AdminActivityPage, AdminControlCenter, AdminOperationsData } from './api'
+import { matchMapImage, handleMapImageError } from './matchArtwork'
 import { setServerLobbyMode, setServerLobbyMaps, getServerLobbyMaps } from './api'
 import {
-  getAdminOverview,
+  getAdminSiteStatistics,
   connectDonutMatch,
   disconnectDonutMatch,
   getAdminStatisticsSource,
@@ -30,10 +41,9 @@ import {
   updateAdminUserBlockStatus,
   updateAdminUserPassword,
   updateAdminUserRole,
-  updateAdminStatisticsSource,
   deleteAdminUser,
 } from './api'
-import type { AdminBanStatusFilter, AdminGameServer, AdminOverviewStats, AdminRole, AdminServerDatabaseConfig, AdminServerIntegration, AdminSourceBan, AdminUserSummary, StatisticsSource } from './api'
+import type { AdminBanStatusFilter, AdminGameServer, AdminSiteStatistics as AdminSiteStatisticsData, AdminRole, AdminServerDatabaseConfig, AdminServerIntegration, AdminSourceBan, AdminUserSummary, StatisticsSource } from './api'
 import type { AdminSection } from './adminAccess'
 
 const route = useRoute()
@@ -44,10 +54,22 @@ const adminRole = ref<AdminRole | null>(null)
 const currentUserId = ref<number | null>(null)
 const loading = ref(true)
 const error = ref('')
-const stats = ref<AdminOverviewStats | null>(null)
+const stats = ref<AdminSiteStatisticsData | null>(null)
+const controlCenter = ref<AdminControlCenter | null>(null)
+const operations = ref<AdminOperationsData | null>(null)
+const activity = ref<AdminActivityPage | null>(null)
+const siteSettings = ref<WebsiteSettings | null>(null)
+const activityPage = ref(1)
+const activitySearch = ref('')
+const expandedServers = ref<number[]>([])
+const actionToast = ref('')
+const userDrawer = ref<HTMLElement | null>(null)
+let previousFocus: HTMLElement | null = null
+let previousOverflow: string | null = null
+let sectionRequest = 0
+let statisticsTimer: ReturnType<typeof setInterval> | undefined
+let statisticsRefreshing = false
 const statisticsSource = ref<StatisticsSource>('own')
-const statisticsSourceSaving = ref(false)
-const statisticsSourceError = ref('')
 const users = ref<AdminUserSummary[]>([])
 const usersSearch = ref('')
 const usersRoleFilter = ref<AdminRole | 'none' | ''>('')
@@ -166,6 +188,9 @@ const sectionIcons = {
   statistics: Activity,
   bans: Ban,
   mutes: X,
+  operations: Gamepad2,
+  audit: Activity,
+  settings: Settings,
 } satisfies Record<AdminSection, typeof Users>
 const sectionLabels: Record<AdminSection | 'overview', string> = {
   overview: 'Обзор',
@@ -175,6 +200,9 @@ const sectionLabels: Record<AdminSection | 'overview', string> = {
   statistics: 'Статистика',
   bans: 'Баны',
   mutes: 'Муты',
+  operations: 'Матчи и лобби',
+  audit: 'Журнал действий',
+  settings: 'Настройки сайта',
 }
 const sectionDescriptions: Partial<Record<AdminSection, string>> = {
   servers: 'Управление игровыми серверами пока не подключено.',
@@ -191,6 +219,37 @@ const roleRanks: Record<AdminRole, number> = {
   administrator: 2,
   high_administrator: 3,
   developer: 4,
+}
+const workspaceTitle = computed(() => section.value === 'bans' || section.value === 'mutes' ? 'Модерация' : sectionLabels[section.value])
+watch(serversError, value => { if (value) actionToast.value = value })
+watch(() => !!selectedUser.value, async opened => {
+  if (opened) {
+    previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    await nextTick()
+    userDrawer.value?.querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled)')?.focus()
+  } else {
+    if (previousOverflow !== null) document.body.style.overflow = previousOverflow
+    previousOverflow = null
+    await nextTick(); previousFocus?.focus()
+  }
+})
+function drawerKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') { event.preventDefault(); closeUserSettings(); return }
+  if (event.key !== 'Tab' || !userDrawer.value) return
+  const nodes = [...userDrawer.value.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled)')]
+  const first = nodes[0], last = nodes[nodes.length - 1]
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+}
+function toggleServerDetails(id: number) { expandedServers.value = expandedServers.value.includes(id) ? expandedServers.value.filter(value => value !== id) : [...expandedServers.value, id] }
+async function refreshOperations() {
+  try { operations.value = await getAdminOperations() } catch (e) { actionToast.value = e instanceof Error ? e.message : 'Не удалось обновить матчи и лобби.' }
+}
+async function loadActivity(page: number, search: string) {
+  activityPage.value = page; activitySearch.value = search
+  await loadSection()
 }
 const assignableRoles = computed(() => roleOptions.filter((role) =>
   adminRole.value === 'developer' || roleRanks[role.value] < roleRanks[adminRole.value ?? 'moderator'],
@@ -690,11 +749,15 @@ async function deleteAdminEntry(ban: AdminSourceBan) {
 }
 
 async function loadSection() {
+  const request = ++sectionRequest
+  const currentSection = section.value
+  const current = () => request === sectionRequest && currentSection === section.value
   loading.value = true
   error.value = ''
 
   try {
     const user = await getCurrentUser()
+    if (!current()) return
     adminRole.value = user?.adminRole ?? null
     currentUserId.value = user?.id ?? null
 
@@ -703,39 +766,29 @@ async function loadSection() {
       return
     }
 
-    if (section.value === 'overview' || section.value === 'statistics') {
-      stats.value = await getAdminOverview()
-      if (section.value === 'statistics') {
-        statisticsSource.value = await getAdminStatisticsSource()
-        statisticsSourceError.value = ''
-      }
-    } else if (section.value === 'users') {
-      users.value = await getAdminUsers(usersSearch.value, usersRoleFilter.value)
-    } else if (section.value === 'servers') {
+    if (currentSection === 'overview') {
+      const data = await getAdminControlCenter(); if (current()) controlCenter.value = data
+    } else if (currentSection === 'statistics') {
+      const data = await getAdminSiteStatistics(); if (current()) stats.value = data
+    } else if (currentSection === 'users') {
+      const data = await getAdminUsers(usersSearch.value, usersRoleFilter.value); if (current()) users.value = data
+    } else if (currentSection === 'servers') {
       serversLoading.value = true
-      servers.value = await getAdminServers()
-    } else if (section.value === 'bans') {
+      const data = await getAdminServers(); if (current()) servers.value = data
+    } else if (currentSection === 'operations') {
+      const data = await getAdminOperations(); if (current()) operations.value = data
+    } else if (currentSection === 'audit') {
+      const data = await getAdminActivity(activityPage.value, activitySearch.value); if (current()) activity.value = data
+    } else if (currentSection === 'settings') {
+      const [data, source] = await Promise.all([getWebsiteSettings(true), getAdminStatisticsSource()])
+      if (current()) { siteSettings.value = data; statisticsSource.value = source }
+    } else if (currentSection === 'bans') {
       await loadAdminBans()
     }
   } catch (requestError) {
-    error.value = requestError instanceof Error ? requestError.message : 'Не удалось загрузить раздел.'
+    if (current()) error.value = requestError instanceof Error ? requestError.message : 'Не удалось загрузить раздел.'
   } finally {
-    serversLoading.value = false
-    loading.value = false
-  }
-}
-
-async function setStatisticsSource(source: StatisticsSource) {
-  if (statisticsSourceSaving.value || source === statisticsSource.value) return
-  statisticsSourceSaving.value = true
-  statisticsSourceError.value = ''
-
-  try {
-    statisticsSource.value = await updateAdminStatisticsSource(source)
-  } catch (requestError) {
-    statisticsSourceError.value = requestError instanceof Error ? requestError.message : 'Не удалось сохранить источник статистики.'
-  } finally {
-    statisticsSourceSaving.value = false
+    if (current()) { serversLoading.value = false; loading.value = false }
   }
 }
 
@@ -774,7 +827,21 @@ function lastSeenLabel(value: string | null): string {
   return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(timestamp)
 }
 
-onMounted(loadSection)
+onMounted(() => {
+  void loadSection()
+  statisticsTimer = setInterval(async () => {
+    if (section.value !== 'statistics' || loading.value || statisticsRefreshing || document.hidden) return
+    statisticsRefreshing = true
+    const request = sectionRequest
+    try {
+      const data = await getAdminSiteStatistics()
+      if (request === sectionRequest && section.value === 'statistics') stats.value = data
+    } catch (e) {
+      if (request === sectionRequest && section.value === 'statistics') actionToast.value = e instanceof Error ? e.message : 'Не удалось обновить статистику сайта.'
+    } finally { statisticsRefreshing = false }
+  }, 30000)
+})
+onBeforeUnmount(() => { if (statisticsTimer) clearInterval(statisticsTimer); sectionRequest++; if (previousOverflow !== null) document.body.style.overflow = previousOverflow })
 watch(section, (next, previous) => {
   if (next !== previous) {
     void loadSection()
@@ -783,65 +850,35 @@ watch(section, (next, previous) => {
 </script>
 
 <template>
-  <section class="welcome-section route-intro" aria-labelledby="admin-page-title">
-    <div class="welcome-copy">
-      <div class="eyebrow"><span class="eyebrow-line"></span> MATCHSTRIKE <span class="eyebrow-slash">/</span> ADMIN</div>
-      <h1 id="admin-page-title">Админ <span>панель</span></h1>
-      <p>{{ section === 'overview' ? 'Сводка по игрокам и управлению сообществом.' : sectionLabels[section] }}</p>
-    </div>
-    <div class="route-intro-mark"><ShieldCheck :size="27" :stroke-width="1.5" /></div>
-  </section>
+  <SiteAlert :message="adminBansError" @close="adminBansError = ''" />
+  <SiteAlert :message="usersSearchError" @close="usersSearchError = ''" />
+  <SiteAlert :message="userDialogError" tone="error" @close="userDialogError = ''" />
+  <SiteAlert :message="userDialogStatus" tone="success" @close="userDialogStatus = ''" />
+  <SiteAlert :message="serverDialogError" tone="error" @close="serverDialogError = ''" />
+  <SiteAlert :message="serverDialogStatus" tone="success" @close="serverDialogStatus = ''" />
+  <SiteAlert :message="banDialogError" tone="error" @close="banDialogError = ''" />
+  <SiteAlert :message="actionToast" @close="actionToast = ''" />
 
-  <AdminSubnav :role="adminRole" />
-
-  <PageLoader v-if="loading" :message="`Загружаем ${sectionLabels[section].toLowerCase()}…`" />
-  <div v-else-if="error" class="admin-error" role="alert">
+  <div class="admin-workspace">
+  <header class="admin-workspace-header"><div><span class="section-kicker">{{ websiteSettings.name.toUpperCase() }} / УПРАВЛЕНИЕ</span><h1 id="admin-page-title">{{ workspaceTitle }}</h1><p>{{ section === 'overview' ? 'Серверы, игры и обращения — всё под контролем.' : 'Управление сообществом ' + websiteSettings.name }}</p></div><div><span class="admin-workspace-role"><ShieldCheck :size="14" /> {{ roleOptions.find(role => role.value === adminRole)?.label || 'Администрация' }}</span><button class="admin-server-icon-button" type="button" :disabled="loading" aria-label="Обновить раздел" v-tooltip="'Обновить раздел'" @click="loadSection"><RefreshCw :size="15" :class="{ 'is-spinning': loading }" /></button></div></header>
+  <div v-if="section === 'bans' || section === 'mutes'" class="admin-segmented admin-moderation-tabs"><RouterLink to="/adminpanel/bans" :aria-current="section === 'bans' ? 'page' : undefined">Баны</RouterLink><RouterLink to="/adminpanel/mutes" :aria-current="section === 'mutes' ? 'page' : undefined">Муты</RouterLink></div>
+  <Transition name="profile-content" mode="out-in">
+  <PageLoader v-if="loading" key="loading" :message="`Загружаем ${sectionLabels[section].toLowerCase()}…`" />
+  <div v-else-if="error" key="error" class="admin-error" role="alert">
     <strong>Не удалось открыть раздел</strong>
     <span>{{ error }}</span>
     <button class="friend-action" type="button" @click="loadSection">Повторить</button>
   </div>
 
-  <section v-else-if="(section === 'overview' || section === 'statistics') && stats" class="admin-content" :aria-label="sectionLabels[section]">
-    <div class="section-heading">
-      <div><div class="section-kicker">MATCHSTRIKE / PLAYERS</div><h2>{{ section === 'overview' ? 'Игроки' : 'Статистика игроков' }}</h2></div>
-      <span class="section-count">{{ stats.total.toLocaleString('ru-RU') }} <span>ВСЕГО</span></span>
-    </div>
-    <div v-if="section === 'statistics'" class="admin-statistics-source">
-      <div class="admin-statistics-source-head">
-        <div><div class="section-kicker">PLAYER DATA</div><h3>Источник статистики</h3></div>
-        <div class="admin-statistics-source-control" role="group" aria-label="Источник статистики игроков">
-          <button type="button" :aria-pressed="statisticsSource === 'own'" :disabled="statisticsSourceSaving" @click="setStatisticsSource('own')"><Activity :size="14" /> Своя статистика</button>
-          <button type="button" :aria-pressed="statisticsSource === 'third_party'" :disabled="statisticsSourceSaving" @click="setStatisticsSource('third_party')"><Database :size="14" /> Сторонняя статистика</button>
-        </div>
-      </div>
-      <p>{{ statisticsSource === 'own' ? 'Сайт не запрашивает данные игроков из LVL. Внутренний источник статистики пока не подключён.' : 'Статистика игроков загружается из LVL-интеграций игровых серверов.' }}</p>
-      <p v-if="statisticsSourceError" class="admin-statistics-source-error" role="alert">{{ statisticsSourceError }}</p>
-    </div>
-    <div class="admin-metrics">
-      <article class="admin-metric">
-        <span class="admin-metric-icon"><Activity :size="17" /></span>
-        <span class="admin-metric-label">Новые за сутки</span>
-        <strong>{{ stats.last24Hours.toLocaleString('ru-RU') }}</strong>
-        <small>Последние 24 часа</small>
-      </article>
-      <article class="admin-metric">
-        <span class="admin-metric-icon"><Users :size="17" /></span>
-        <span class="admin-metric-label">Новые за неделю</span>
-        <strong>{{ stats.last7Days.toLocaleString('ru-RU') }}</strong>
-        <small>Последние 7 дней</small>
-      </article>
-      <article class="admin-metric">
-        <span class="admin-metric-icon"><Users :size="17" /></span>
-        <span class="admin-metric-label">Новые за месяц</span>
-        <strong>{{ stats.lastMonth.toLocaleString('ru-RU') }}</strong>
-        <small>За последний месяц</small>
-      </article>
-    </div>
-  </section>
+  <AdminDashboard v-else-if="section === 'overview' && controlCenter && adminRole" key="overview" :data="controlCenter" :role="adminRole" />
+  <AdminOperations v-else-if="section === 'operations' && operations" key="operations" :data="operations" @refresh="refreshOperations" />
+  <AdminActivity v-else-if="section === 'audit' && activity" key="audit" :data="activity" @load="loadActivity" />
+  <AdminSiteSettings v-else-if="section === 'settings' && siteSettings" key="settings" :data="siteSettings" :statistics-source="statisticsSource" />
+  <AdminSiteStatistics v-else-if="section === 'statistics' && stats" key="statistics" :data="stats" />
 
-  <section v-else-if="section === 'users'" class="admin-content" aria-labelledby="admin-users-title">
+  <section v-else-if="section === 'users'" key="users" class="admin-content" aria-labelledby="admin-users-title">
     <div class="section-heading">
-      <div><div class="section-kicker">MATCHSTRIKE / ACCOUNTS</div><h2 id="admin-users-title">Пользователи</h2></div>
+      <div><div class="section-kicker">{{ websiteSettings.name.toUpperCase() }} / ACCOUNTS</div><h2 id="admin-users-title">Пользователи</h2></div>
       <span class="section-count">{{ users.length.toString().padStart(2, '0') }} <span>НАЙДЕНО</span></span>
     </div>
     <form class="admin-user-search" role="search" @submit.prevent="searchUsers">
@@ -859,14 +896,14 @@ watch(section, (next, previous) => {
         <button class="friend-action admin-user-search-clear" type="button" aria-label="Сбросить поиск" v-tooltip="'Сбросить поиск'" :disabled="usersLoading || (!usersSearch && !usersRoleFilter)" @click="clearUserSearch"><X :size="14" /></button>
       </div>
     </form>
-    <p v-if="usersSearchError" class="admin-error-inline" role="alert">{{ usersSearchError }}</p>
+
     <p v-if="usersLoading" class="admin-user-search-status" role="status">Ищем пользователей…</p>
     <div v-if="users.length" class="admin-table-wrap">
       <table class="admin-users-table">
         <thead><tr><th>Игрок</th><th>Email</th><th>Роль</th><th>Статус</th><th>Регистрация</th><th>Последний визит</th><th></th></tr></thead>
         <tbody>
           <tr v-for="user in users" :key="user.id">
-            <td><RouterLink :to="{ name: 'profile', params: { nickname: user.nickname } }">{{ user.nickname }}</RouterLink></td>
+            <td><span class="admin-user-identity"><img v-if="user.avatarUrl" :src="user.avatarUrl" alt="" /><span v-else class="admin-user-initial">{{ user.nickname.slice(0,1).toUpperCase() }}</span><span><RouterLink :to="{ name: 'profile', params: { nickname: user.nickname } }">{{ user.nickname }}</RouterLink><small>{{ user.steamId || 'Steam не привязан' }}</small></span></span></td>
             <td>{{ user.email }}</td>
             <td><span class="admin-role-label" :class="{ 'is-admin': user.adminRole }">{{ user.adminRoleLabel ?? 'Игрок' }}</span></td>
             <td><span class="admin-user-status" :class="{ 'is-blocked': user.isBlocked }">{{ user.isBlocked ? 'Заблокирован' : 'Активен' }}</span></td>
@@ -880,15 +917,16 @@ watch(section, (next, previous) => {
     <div v-else class="admin-placeholder"><Users :size="19" /><strong>{{ usersSearch || usersRoleFilter ? 'Ничего не найдено' : 'Пользователей пока нет' }}</strong><span v-if="usersSearch || usersRoleFilter">Измените запрос или фильтр роли.</span></div>
   </section>
 
-  <section v-else-if="section === 'servers'" class="admin-content" aria-labelledby="admin-servers-title">
+  <section v-else-if="section === 'servers'" key="servers" class="admin-content admin-servers-workspace" aria-labelledby="admin-servers-title">
     <div class="section-heading">
-      <div><div class="section-kicker">MATCHSTRIKE / INFRASTRUCTURE</div><h2 id="admin-servers-title">Игровые серверы</h2></div>
+      <div><div class="section-kicker">{{ websiteSettings.name.toUpperCase() }} / INFRASTRUCTURE</div><h2 id="admin-servers-title">Игровые серверы</h2></div>
       <button class="dialog-primary admin-server-add" type="button" @click="openServerEditor()"><Plus :size="14" /> Добавить</button>
     </div>
-    <p v-if="serversError" class="admin-error-inline" role="alert">{{ serversError }}</p>
     <div v-if="serversLoading" class="admin-server-loading" role="status">Загружаем серверы…</div>
     <div v-else-if="servers.length" class="admin-server-list">
       <article v-for="server in servers" :key="server.id" class="admin-server-card">
+        <div class="admin-server-preview"><img v-if="server.query.map && matchMapImage(server.query.map)" :src="matchMapImage(server.query.map)!" alt="" loading="lazy" @error="handleMapImageError" /><div></div><span class="admin-state" :class="typeof server.query.players === 'number' ? 'is-online' : 'is-offline'"><i></i>{{ typeof server.query.players === 'number' ? 'Онлайн' : 'Нет ответа' }}</span><span class="admin-server-mode">{{ server.lobbyEnabled ? 'Только лобби' : 'Общедоступный' }}</span></div>
+        <div class="admin-server-card-content">
         <div class="admin-server-card-head">
           <div class="admin-server-identity">
             <span class="admin-server-icon"><Gamepad2 :size="17" /></span>
@@ -901,13 +939,13 @@ watch(section, (next, previous) => {
             <RefreshCw :size="14" :class="{ 'is-spinning': refreshingServerId === server.id }" />
           </button>
         </div>
-        <div class="admin-server-metadata">
+        <div class="admin-server-facts">
           <div><span>Карта</span><strong>{{ server.query.map || 'Нет данных' }}</strong></div>
-          <div><span>Игроки</span><strong>{{ server.query.players === null ? '—' : `${server.query.players} / ${server.query.maxPlayers ?? '—'}` }}</strong></div>
-          <div><span>SourceBans</span><strong :class="{ 'is-connected': server.sourcebansConnected }">{{ server.sourcebansConnected ? 'Подключён' : 'Не подключён' }}</strong></div>
-          <div><span>Levels Ranks</span><strong :class="{ 'is-connected': server.levelsConnected }">{{ server.levelsConnected ? 'Подключён' : 'Не подключён' }}</strong></div>
-          <div><span>DonutMatch</span><strong :class="{ 'is-connected': server.donutmatchConnected }">{{ server.donutmatchConnected ? (server.donutmatchLastSeenAt ? 'Данные получены' : 'Ожидает данные') : 'Не подключён' }}</strong></div>
+          <div><span>Игроки</span><strong>{{ server.query.players == null ? '—' : `${server.query.players} / ${server.query.maxPlayers ?? '—'}` }}</strong></div>
         </div>
+        <div class="admin-integration-badges"><span :class="{ 'is-connected': server.sourcebansConnected }"><i></i>SourceBans</span><span :class="{ 'is-connected': server.levelsConnected }"><i></i>LVL</span><span :class="{ 'is-connected': server.donutmatchConnected }"><i></i>DonutMatch</span></div>
+        <button class="admin-server-details-toggle" type="button" :aria-expanded="expandedServers.includes(server.id)" :aria-controls="`admin-server-details-${server.id}`" @click="toggleServerDetails(server.id)"><Settings :size="14" /> Настройка и управление <ChevronRight :size="15" :class="{ 'is-open': expandedServers.includes(server.id) }" /></button>
+        <div v-if="expandedServers.includes(server.id)" :id="`admin-server-details-${server.id}`" class="admin-server-details">
         <div class="admin-server-actions">
           <button class="friend-action server-lobby-switch" type="button" role="switch" :aria-checked="server.lobbyEnabled" :disabled="togglingLobby !== null" @click="toggleLobbyMode(server)"><span class="server-lobby-track" aria-hidden="true"><i></i></span> Лобби: {{ server.lobbyEnabled ? 'включено · только комнаты' : 'выключено · общедоступный' }}</button>
           <span v-if="server.lobbyEnabled" class="profile-data-note">{{ server.lobbyError || (server.lobbyReady ? 'Готов к распределению' : 'Ожидает мост или занят матчем') }}</span>
@@ -925,16 +963,18 @@ watch(section, (next, previous) => {
           <form @submit.prevent="addLobbyMap(server)"><input v-model.trim="lobbyMapInputs[server.id]" type="text" :aria-label="`Добавить карту на сервер ${server.name || server.id}`" placeholder="Например, de_dust2_ob" required maxlength="63" :disabled="savingLobbyMaps !== null" /><button class="friend-action" type="submit" :disabled="savingLobbyMaps !== null || server.lobbyMaps.length >= 32"><Plus :size="13" /> Добавить</button></form>
           <p>Удаление убирает карту из пула будущих лобби. Файлы карты и порядок карт текущего матча сохраняются.</p>
         </section>
+        </div>
+        </div>
       </article>
     </div>
     <div v-else class="admin-placeholder"><Gamepad2 :size="20" /><strong>Серверы ещё не добавлены</strong><span>Добавьте IP, порт и RCON-пароль, чтобы начать управление.</span></div>
   </section>
 
-  <section v-else-if="section === 'tickets'" class="admin-content" aria-label="Тикеты">
+  <section v-else-if="section === 'tickets'" key="tickets" class="admin-content" aria-label="Тикеты">
     <TicketWorkspace admin />
   </section>
 
-  <section v-else-if="section === 'bans'" class="admin-content" aria-labelledby="admin-bans-title">
+  <section v-else-if="section === 'bans'" key="bans" class="admin-content" aria-labelledby="admin-bans-title">
     <div class="section-heading">
       <div><div class="section-kicker">SOURCEBANS / MODERATION</div><h2 id="admin-bans-title">Реестр банов</h2></div>
       <span class="section-count">{{ adminBanTotal.toLocaleString('ru-RU') }} <span>ЗАПИСЕЙ</span></span>
@@ -947,7 +987,7 @@ watch(section, (next, previous) => {
     <div class="admin-ban-filters" role="group" aria-label="Фильтр по статусу бана">
       <button v-for="item in banStatusOptions" :key="item.value" type="button" :aria-pressed="adminBanStatus === item.value" @click="selectAdminBanStatus(item.value)">{{ item.label }} <span>{{ adminBanCounts[item.value].toLocaleString('ru-RU') }}</span></button>
     </div>
-    <p v-if="adminBansError" class="admin-error-inline" role="alert">{{ adminBansError }}</p>
+
     <PageLoader v-if="adminBansLoading" message="Загружаем баны…" />
     <div v-else-if="adminBans.length" class="admin-table-wrap admin-bans-table-wrap">
       <table class="admin-bans-table">
@@ -977,20 +1017,21 @@ watch(section, (next, previous) => {
     </div>
   </section>
 
-  <section v-else-if="section !== 'overview'" class="admin-content" :aria-label="sectionLabels[section]">
+  <section v-else-if="section !== 'overview'" :key="section" class="admin-content" :aria-label="sectionLabels[section]">
     <div class="section-heading">
-      <div><div class="section-kicker">MATCHSTRIKE / ADMIN</div><h2>{{ sectionLabels[section] }}</h2></div>
+      <div><div class="section-kicker">{{ websiteSettings.name.toUpperCase() }} / ADMIN</div><h2>{{ sectionLabels[section] }}</h2></div>
     </div>
     <div class="admin-placeholder">
       <component :is="sectionIcons[section]" :size="20" />
       <strong>{{ sectionDescriptions[section] ?? 'Раздел готов к подключению данных.' }}</strong>
     </div>
   </section>
+  </Transition>
 
   <Teleport to="body">
-    <Transition name="modal">
-      <div v-if="selectedUser" class="modal-backdrop" @click.self="closeUserSettings">
-        <form class="info-dialog admin-user-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-user-dialog-title" @submit.prevent="saveUser">
+    <Transition name="admin-drawer">
+      <div v-if="selectedUser" class="modal-backdrop admin-drawer-backdrop" @click.self="closeUserSettings">
+        <form ref="userDrawer" class="info-dialog admin-user-dialog admin-user-drawer" role="dialog" aria-modal="true" aria-labelledby="admin-user-dialog-title" @submit.prevent="saveUser" @keydown="drawerKeydown">
           <button class="dialog-close" type="button" aria-label="Закрыть" :disabled="userAction !== null" @click="closeUserSettings"><X :size="18" /></button>
           <span class="dialog-mark"><Settings :size="19" /></span>
           <div class="section-kicker">ACCOUNTS / ADMIN</div>
@@ -1023,7 +1064,7 @@ watch(section, (next, previous) => {
             </div>
           </div>
 
-          <p v-if="userDialogError" class="auth-message" role="alert">{{ userDialogError }}</p>
+
           <div class="admin-user-edit-actions">
             <button class="dialog-secondary" type="button" :disabled="userAction !== null" @click="assignUserRole">{{ userAction === 'role' ? 'Сохраняем…' : 'Выдать роль' }}</button>
             <button class="dialog-primary" type="submit" :disabled="userAction !== null">{{ userAction === 'save' ? 'Сохраняем…' : 'Сохранить' }}</button>
@@ -1056,7 +1097,7 @@ watch(section, (next, previous) => {
             </div>
           </section>
 
-          <p v-if="userDialogStatus" class="admin-user-action-status" role="status">{{ userDialogStatus }}</p>
+
 
           <div class="admin-user-danger-actions">
             <button class="admin-danger-button" type="button" :disabled="userAction !== null" @click="confirmation = userForm.isBlocked ? 'unblock' : 'block'">
@@ -1083,7 +1124,7 @@ watch(section, (next, previous) => {
         <form v-if="serverDialog === 'server'" class="info-dialog admin-server-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-server-dialog-title" @submit.prevent="saveServerForm">
           <button class="dialog-close" type="button" aria-label="Закрыть" :disabled="serverAction" @click="closeServerDialog()"><X :size="18" /></button>
           <span class="dialog-mark"><Gamepad2 :size="19" /></span>
-          <div class="section-kicker">MATCHSTRIKE / SERVER</div>
+          <div class="section-kicker">{{ websiteSettings.name.toUpperCase() }} / SERVER</div>
           <h2 id="admin-server-dialog-title">{{ activeServer ? 'Изменить сервер' : 'Добавить сервер' }}</h2>
           <div class="admin-server-form-fields">
             <label class="auth-field"><span>Название <small>необязательно</small></span><input v-model.trim="serverForm.name" class="auth-input" type="text" maxlength="100" autocomplete="off" /></label>
@@ -1093,7 +1134,7 @@ watch(section, (next, previous) => {
             </div>
             <label class="auth-field"><span>RCON-пароль <small>{{ activeServer ? 'пустое поле оставит текущий' : 'обязательно' }}</small></span><input v-model="serverForm.rconPassword" class="auth-input" type="password" :required="!activeServer" maxlength="255" autocomplete="new-password" /></label>
           </div>
-          <p v-if="serverDialogError" class="auth-message" role="alert">{{ serverDialogError }}</p>
+
           <div class="admin-server-dialog-actions">
             <button class="dialog-secondary" type="button" :disabled="serverAction" @click="closeServerDialog()">Отмена</button>
             <button class="dialog-primary" type="submit" :disabled="serverAction">{{ serverAction ? 'Сохраняем…' : 'Сохранить' }}</button>
@@ -1121,8 +1162,8 @@ watch(section, (next, previous) => {
               <label v-for="field in integrationColumnFields" :key="field.key" class="auth-field"><span>{{ field.label }}</span><input v-model.trim="integrationForm[field.key]" class="auth-input" type="text" required maxlength="64" autocomplete="off" /></label>
             </div>
           </div>
-          <p v-if="serverDialogError" class="auth-message" role="alert">{{ serverDialogError }}</p>
-          <p v-if="serverDialogStatus" class="admin-user-action-status" role="status">{{ serverDialogStatus }}</p>
+
+
           <div class="admin-server-dialog-actions">
             <button v-if="activeIntegrationSettings" class="admin-danger-button is-delete" type="button" :disabled="serverAction" @click="disconnectIntegration">{{ serverAction ? 'Отключаем…' : 'Отключить' }}</button>
             <button class="dialog-secondary" type="button" :disabled="serverAction" @click="closeServerDialog()">Закрыть</button>
@@ -1133,7 +1174,7 @@ watch(section, (next, previous) => {
         <div v-else-if="serverDialog === 'donutmatch'" class="info-dialog admin-server-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-donut-title">
           <button class="dialog-close" type="button" aria-label="Закрыть" :disabled="serverAction" @click="closeServerDialog()"><X :size="18" /></button>
           <span class="dialog-mark"><Link2 :size="19" /></span>
-          <div class="section-kicker">MATCHSTRIKE / DONUTMATCH</div>
+          <div class="section-kicker">{{ websiteSettings.name.toUpperCase() }} / DONUTMATCH</div>
           <h2 id="admin-donut-title">DonutMatch</h2>
           <p class="admin-server-dialog-subtitle">Настройте web-модуль на игровом сервере. Матчи сохраняются после подключения.</p>
           <div v-if="activeServer" class="admin-server-form-fields">
@@ -1143,7 +1184,7 @@ watch(section, (next, previous) => {
             <p v-else class="admin-server-dialog-subtitle">{{ activeServer.donutmatchConnected ? 'Ключ уже создан. При смене потребуется обновить конфигурацию плагина.' : 'Создайте ключ и добавьте его в конфигурацию плагина.' }}</p>
             <p v-if="activeServer.donutmatchLastSeenAt" class="admin-server-dialog-subtitle">Последние данные: {{ formatDate(activeServer.donutmatchLastSeenAt) }}</p>
           </div>
-          <p v-if="serverDialogError" class="auth-message" role="alert">{{ serverDialogError }}</p>
+
           <div class="admin-server-dialog-actions">
             <button v-if="activeServer?.donutmatchConnected" class="dialog-secondary" type="button" :disabled="serverAction" @click="configureDonutMatch(true)">Отключить</button>
             <button class="dialog-primary" type="button" :disabled="serverAction" @click="configureDonutMatch()">{{ serverAction ? 'Сохраняем…' : activeServer?.donutmatchConnected ? 'Сменить ключ' : 'Создать ключ' }}</button>
@@ -1157,7 +1198,7 @@ watch(section, (next, previous) => {
           <h2 id="admin-rcon-dialog-title">Выполнить RCON</h2>
           <p class="admin-server-dialog-subtitle">{{ activeServer?.name || activeServer?.ip }}:{{ activeServer?.port }}</p>
           <label class="auth-field admin-rcon-field"><span>Команда</span><input v-model.trim="rconCommand" class="auth-input" type="text" required maxlength="256" pattern="[^;\r\n]+" autocomplete="off" placeholder="status" /></label>
-          <p v-if="serverDialogError" class="auth-message" role="alert">{{ serverDialogError }}</p>
+
           <pre v-if="rconOutput" class="admin-rcon-output">{{ rconOutput }}</pre>
           <div class="admin-server-dialog-actions">
             <button class="dialog-secondary" type="button" :disabled="serverAction" @click="closeServerDialog()">Закрыть</button>
@@ -1184,7 +1225,7 @@ watch(section, (next, previous) => {
             <label class="admin-ban-permanent"><input v-model="banForm.permanent" type="checkbox" /> <span>Постоянный бан</span></label>
             <label v-if="!banForm.permanent" class="auth-field"><span>Дата окончания</span><input v-model="banForm.endsAt" class="auth-input" type="datetime-local" required /></label>
           </div>
-          <p v-if="banDialogError" class="auth-message" role="alert">{{ banDialogError }}</p>
+
           <div class="admin-server-dialog-actions">
             <button class="dialog-secondary" type="button" :disabled="banAction !== null" @click="closeBanDialog()">Отмена</button>
             <button class="dialog-primary" type="submit" :disabled="banAction !== null">{{ banAction === 'save' ? 'Сохраняем…' : 'Сохранить изменения' }}</button>
@@ -1194,6 +1235,8 @@ watch(section, (next, previous) => {
     </Transition>
   </Teleport>
 
+
+  </div>
 </template>
 
 <style scoped>

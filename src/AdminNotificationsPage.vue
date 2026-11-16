@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { BellRing, Megaphone, Send, ShieldCheck } from '@lucide/vue'
-import { getCurrentUser, sendAdminBroadcastNotification } from './api'
-import type { AdminRole } from './api'
-import AdminSubnav from './components/AdminSubnav.vue'
+import SiteAlert from './components/SiteAlert.vue'
+import { websiteSettings } from './websiteSettings'
+import { computed, ref } from 'vue'
+import { BellRing, Megaphone, Send } from '@lucide/vue'
+import { sendAdminBroadcastNotification } from './api'
 import type { AdminBroadcastResult } from './api'
 
 const sender = ref('')
@@ -14,15 +14,6 @@ const sending = ref(false)
 const error = ref('')
 const fieldErrors = ref<Record<string, string[]>>({})
 const result = ref<AdminBroadcastResult | null>(null)
-const adminRole = ref<AdminRole | null>(null)
-
-onMounted(async () => {
-  try {
-    adminRole.value = (await getCurrentUser())?.adminRole ?? null
-  } catch {
-    adminRole.value = null
-  }
-})
 
 const previewSender = computed(() => sender.value.trim() || 'Администрация')
 
@@ -64,16 +55,10 @@ async function sendBroadcast() {
 </script>
 
 <template>
-  <section class="welcome-section route-intro" aria-labelledby="admin-notifications-title">
-    <div class="welcome-copy">
-      <div class="eyebrow"><span class="eyebrow-line"></span> MATCHSTRIKE <span class="eyebrow-slash">/</span> ADMINISTRATION</div>
-      <h1 id="admin-notifications-title">Общие <span>уведомления</span></h1>
-      <p>Отправка объявлений всем пользователям сообщества.</p>
-    </div>
-    <div class="route-intro-mark"><Megaphone :size="27" :stroke-width="1.5" /></div>
-  </section>
+  <SiteAlert :message="error" tone="error" @close="error = ''" />
+  <SiteAlert :message="result ? `Уведомление отправлено. Получили: ${result.sent} из ${result.totalUsers}. Пропущено из-за настроек: ${result.skippedByPreferences}. Вне сайта с push-подпиской: ${result.offlineWithPushSubscription}. Ошибок доставки: ${result.failed}. Отправитель: ${result.sender}.` : ''" :tone="result?.failed ? 'warning' : 'success'" @close="result = null" />
 
-  <AdminSubnav :role="adminRole" />
+  <header class="admin-workspace-header"><div><span class="section-kicker">{{ websiteSettings.name.toUpperCase() }} / УПРАВЛЕНИЕ</span><h1 id="admin-notifications-title">Уведомления</h1><p>Объявления для пользователей сообщества.</p></div><Megaphone :size="25" /></header>
 
   <section class="content-section route-section admin-notifications-page" aria-labelledby="broadcast-form-title">
     <div class="section-heading">
@@ -107,7 +92,7 @@ async function sendBroadcast() {
           <span v-if="fieldError('link')" class="field-error">{{ fieldError('link') }}</span>
         </label>
 
-        <p v-if="error" class="auth-message" role="alert">{{ error }}</p>
+
         <div class="admin-broadcast-submit-row">
           <span>Рассылка будет отправлена всем, у кого включены системные сообщения.</span>
           <button class="dialog-primary" type="submit" :disabled="sending || !title.trim() || !message.trim()"><Send :size="14" /> {{ sending ? 'Отправляем…' : 'Отправить всем' }}</button>
@@ -131,16 +116,6 @@ async function sendBroadcast() {
       </aside>
     </div>
 
-    <div v-if="result" class="admin-broadcast-result" role="status">
-      <div class="admin-broadcast-result-icon"><ShieldCheck :size="18" /></div>
-      <div>
-        <strong>Уведомление отправлено</strong>
-        <p>Получили уведомление: <b>{{ result.sent }}</b> из {{ result.totalUsers }} пользователей.</p>
-        <p v-if="result.skippedByPreferences">Пропущено из-за настроек: {{ result.skippedByPreferences }}.</p>
-        <p v-if="result.offlineWithPushSubscription">Пользователей вне сайта с push-подпиской: {{ result.offlineWithPushSubscription }}.</p>
-        <p v-if="result.failed" class="admin-broadcast-result-warning">Ошибок доставки: {{ result.failed }}.</p>
-        <small>Отправитель: {{ result.sender }}</small>
-      </div>
-    </div>
+
   </section>
 </template>

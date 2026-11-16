@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { websiteSettings } from './websiteSettings'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Gamepad2, LoaderCircle, Swords, Users } from '@lucide/vue'
@@ -133,7 +134,7 @@ onUnmounted(() => { if (timer) clearInterval(timer); window.removeEventListener(
     <div class="welcome-copy">
       <div class="eyebrow"><span class="eyebrow-line"></span> ИСТОРИЯ ИГР <span class="eyebrow-slash">/</span> MATCHES</div>
       <h1 id="matches-page-title">Матчи</h1>
-      <p>Результаты игр и история матчей сообщества MatchStrike.</p>
+      <p>Результаты игр и история матчей сообщества {{ websiteSettings.name }}.</p>
     </div>
     <div class="route-intro-mark"><Gamepad2 :size="27" :stroke-width="1.5" /></div>
   </section>

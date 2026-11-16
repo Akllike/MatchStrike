@@ -2,8 +2,9 @@ import { createRouter, createWebHistory } from 'vue-router'
 import AppShell from './AppShell.vue'
 import { getCurrentUser } from './api'
 import { adminLandingPath, canAccessAdmin } from './adminAccess'
+import { loadWebsiteSettings, websiteSettings } from './websiteSettings'
 
-const DashboardPage = () => import('./DashboardPage.vue')
+const HomePage = () => import('./HomePage.vue')
 const MatchesPage = () => import('./MatchesPage.vue')
 const LobbyPage = () => import('./LobbyPage.vue')
 const MatchDetailPage = () => import('./MatchDetailPage.vue')
@@ -23,7 +24,7 @@ export const router = createRouter({
       path: '/',
       component: AppShell,
       children: [
-        { path: '', name: 'home', component: DashboardPage },
+        { path: '', name: 'home', component: HomePage },
         { path: 'lobby', name: 'lobby', component: LobbyPage },
         { path: 'matches', redirect: { name: 'matches-mode', params: { mode: 'mix' } } },
         { path: 'matches/:mode(mix|war)', name: 'matches-mode', component: MatchesPage },
@@ -36,7 +37,7 @@ export const router = createRouter({
         { path: 'settings', name: 'settings', component: SettingsPage, meta: { requiresAuth: true } },
         { path: 'adminpanel', name: 'adminpanel', component: AdminPanelPage, meta: { requiresAdmin: true } },
         { path: 'notifications', name: 'admin-notifications', component: AdminNotificationsPage, meta: { requiresAdmin: true, adminPermission: 'notifications' } },
-        { path: 'adminpanel/:section(users|tickets|servers|statistics|bans|mutes)', name: 'adminpanel-section', component: AdminPanelPage, meta: { requiresAdmin: true } },
+        { path: 'adminpanel/:section(users|tickets|servers|statistics|bans|mutes|operations|audit|settings)', name: 'adminpanel-section', component: AdminPanelPage, meta: { requiresAdmin: true } },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },
@@ -47,6 +48,8 @@ export const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
+  await loadWebsiteSettings()
+  if (to.name === 'lobby' && !websiteSettings.value.lobbyEnabled && !to.query.room) return { name: 'home' }
   const requiresAdmin = to.matched.some((record) => record.meta.requiresAdmin)
   const requiredAdminPermission = to.meta.adminPermission as string | undefined
   if (!requiresAdmin && !to.matched.some((record) => record.meta.requiresAuth)) return true

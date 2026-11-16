@@ -118,6 +118,52 @@ export interface AdminOverviewStats {
   total: number
 }
 
+export interface AdminSiteStatistics {
+  users: { total:number; online:number; blocked:number; steamLinked:number; active24Hours:number; last24Hours:number; last7Days:number; last30Days:number }
+  tickets: { total:number; open:number; closed:number; last24Hours:number; last7Days:number; last30Days:number }
+  servers: { total:number; online:number; unavailable:number; playersOnline:number|null; capacity:number; items:{ id:number; name:string; state:'online'|'offline'|'stale'|'unknown'; map:string|null; lobbyOnly:boolean; players:number|null; maxPlayers:number|null; checkedAt:string|null }[] }
+  matches: { active:number; finished:number; mix:number; war:number; cancelled:number }
+  lobbies: { active:number; players:number }
+  daily: { date:string; registrations:number; tickets:number }[]
+  timezone:string
+  updatedAt:string
+}
+
+export async function getAdminSiteStatistics(): Promise<AdminSiteStatistics> {
+  return (await readJson<{statistics:AdminSiteStatistics}>(await apiFetch(`${apiBaseUrl}/admin/statistics/site`, {
+    credentials:'include', cache:'no-store', headers:{Accept:'application/json'},
+  }))).statistics
+}
+
+export interface AdminActivityEntry { id: number; actor: string; action: string; resourceType: string | null; resourceId: string | null; reason: string | null; createdAt: string }
+export interface AdminActivityPage { entries: AdminActivityEntry[]; pagination: { page: number; lastPage: number; total: number } }
+export interface AdminControlCenter {
+  stats: { users: number; newUsers: number; serversTotal: number; serversOnline: number; playersOnline: number; activeMatches: number; openLobbies: number; openTickets: number; unansweredTickets: number }
+  servers: { id: number; name: string; state: 'online' | 'offline' | 'stale' | 'unknown'; map: string | null; players: number | null; maxPlayers: number | null; lobbyOnly: boolean; lobbyReady: boolean; bridge: 'connected' | 'waiting' | 'stale' | 'unconfigured'; lastSeenAt: string | null; checkedAt: string | null; lobbyIssue: boolean }[]
+  attention: { id: string; severity: 'warning' | 'info'; title: string; detail: string; section: 'servers' | 'operations' | 'tickets' }[]
+  recentActivity: AdminActivityEntry[]
+  updatedAt: string
+}
+export interface AdminOperationsData {
+  matches: { id: number; mode: string; status: string; map: string; format: string; serverName: string | null; updatedAt: string | null; teamA: string; teamB: string; scoreA: number | null; scoreB: number | null }[]
+  lobbies: { id: string; name: string; status: string; captain: string; teamSize: number; members: number; format: string; maps: string[]; serverName: string | null; matchId: number | null; deadline: string | null; createdAt: string; canCancel: boolean }[]
+  updatedAt: string
+}
+
+export async function getAdminControlCenter(): Promise<AdminControlCenter> {
+  return readJson<AdminControlCenter>(await apiFetch(`${apiBaseUrl}/admin/control-center`, { credentials: 'include', cache: 'no-store', headers: { Accept: 'application/json' } }))
+}
+export async function getAdminOperations(): Promise<AdminOperationsData> {
+  return readJson<AdminOperationsData>(await apiFetch(`${apiBaseUrl}/admin/operations`, { credentials: 'include', cache: 'no-store', headers: { Accept: 'application/json' } }))
+}
+export async function getAdminActivity(page = 1, search = ''): Promise<AdminActivityPage> {
+  const params = new URLSearchParams({ page: String(page), search })
+  return readJson<AdminActivityPage>(await apiFetch(`${apiBaseUrl}/admin/activity?${params}`, { credentials: 'include', cache: 'no-store', headers: { Accept: 'application/json' } }))
+}
+export async function cancelAdminLobby(id: string, reason: string): Promise<void> {
+  await postJson(`${apiBaseUrl}/admin/operations/lobbies/${encodeURIComponent(id)}/cancel`, { reason })
+}
+
 export interface AdminUserSummary {
   id: number
   nickname: string
@@ -708,10 +754,41 @@ export async function disconnectDonutMatch(serverId: number): Promise<void> {
   await mutateJson<{ status: string }>(`${apiBaseUrl}/admin/servers/${serverId}/donutmatch`, 'DELETE')
 }
 
-export async function getGameMatches(mode: 'War' | 'Mix' | null, page = 1): Promise<GameMatchesPage> {
+export async function getGameMatches(mode: 'War' | 'Mix' | null, page = 1, perPage = 10): Promise<GameMatchesPage> {
   const params = new URLSearchParams({ page: String(page) })
+  params.set('perPage', String(perPage))
   if (mode) params.set('mode', mode)
   return readJson<GameMatchesPage>(await apiFetch(`${apiBaseUrl}/matches?${params}`, { headers: { Accept: 'application/json' } }))
+}
+
+export interface WebsiteSettings {
+  name: string
+  tagline: string
+  description: string
+  serversLimit: number
+  mixMatchesLimit: number
+  warMatchesLimit: number
+  lobbyEnabled: boolean
+  logoLight: string | null
+  logoDark: string | null
+  faq: { id: string; question: string; answer: string }[]
+}
+
+export async function getWebsiteSettings(admin = false): Promise<WebsiteSettings> {
+  return (await readJson<{ settings: WebsiteSettings }>(await apiFetch(`${apiBaseUrl}/${admin ? 'admin/' : ''}site-settings`, { credentials: 'include', cache: 'no-store', headers: { Accept: 'application/json' } }))).settings
+}
+export async function saveWebsiteSettings(settings: WebsiteSettings): Promise<WebsiteSettings> {
+  return (await mutateJson<{ settings: WebsiteSettings }>(`${apiBaseUrl}/admin/site-settings`, 'PUT', settings)).settings
+}
+export async function uploadWebsiteLogo(theme: 'light' | 'dark', logo: File): Promise<WebsiteSettings> {
+  const csrfToken = await getCsrfToken()
+  const body = new FormData(); body.append('theme', theme); body.append('logo', logo)
+  return (await readJson<{ settings: WebsiteSettings }>(await apiFetch(`${apiBaseUrl}/admin/site-settings/logo`, {
+    method: 'POST', credentials: 'include', headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken }, body,
+  }))).settings
+}
+export async function resetWebsiteLogo(theme: 'light' | 'dark'): Promise<WebsiteSettings> {
+  return (await mutateJson<{ settings: WebsiteSettings }>(`${apiBaseUrl}/admin/site-settings/logo`, 'DELETE', { theme })).settings
 }
 
 export async function getGameMatch(id: string): Promise<GameMatchDetails> {

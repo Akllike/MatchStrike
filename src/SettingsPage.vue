@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import SiteAlert from './components/SiteAlert.vue'
+import { websiteSettings } from './websiteSettings'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { Bell, Camera, Check, KeyRound, Link2, LogOut, Mail, Monitor, Smartphone, Tablet, Share2, Shield, ShieldCheck, Trash2, Upload, UserRound, X } from '@lucide/vue'
+import { Bell, Camera, KeyRound, Link2, LogOut, Mail, Monitor, Smartphone, Tablet, Share2, Shield, ShieldCheck, Trash2, Upload, UserRound, X } from '@lucide/vue'
 import QRCode from 'qrcode'
 import PageLoader from './components/PageLoader.vue'
 import { socialIdFromValue } from './socialLinks'
@@ -55,7 +57,6 @@ const socialMessage = ref('')
 const topToastMessage = ref('')
 const topToastTone = ref<'success' | 'warning'>('success')
 const socialErrors = ref<Record<string, string[]>>({})
-let topToastTimer: number | undefined
 const socialPlatforms = [
   { id: 'telegram', label: 'Telegram', placeholder: 'username' },
   { id: 'instagram', label: 'Instagram', placeholder: 'username' },
@@ -115,17 +116,11 @@ function errorFor(errors: Record<string, string[]>, field: string): string {
 
 function dismissTopToast() {
   topToastMessage.value = ''
-  if (topToastTimer !== undefined) {
-    window.clearTimeout(topToastTimer)
-    topToastTimer = undefined
-  }
 }
 
 function showTopToast(message: string, tone: 'success' | 'warning' = 'success') {
   topToastMessage.value = message
   topToastTone.value = tone
-  if (topToastTimer !== undefined) window.clearTimeout(topToastTimer)
-  topToastTimer = window.setTimeout(dismissTopToast, 5000)
 }
 
 function setNotificationFeedback(message: string, tone: 'success' | 'warning' = 'success') {
@@ -686,18 +681,24 @@ function formatActivity(value: string | null): string {
 
 onMounted(loadAccount)
 onBeforeUnmount(() => {
-  if (topToastTimer !== undefined) window.clearTimeout(topToastTimer)
 })
 </script>
 
 <template>
-  <Transition name="profile-toast">
-    <div v-if="topToastMessage" class="profile-toast" :class="{ 'is-warning': topToastTone === 'warning' }" role="status" aria-live="polite" aria-atomic="true">
-      <span class="profile-toast-icon motion-safe:animate-pulse"><Bell v-if="topToastTone === 'warning'" :size="15" /><Check v-else :size="15" :stroke-width="2.5" /></span>
-      <span class="profile-toast-message">{{ topToastMessage }}</span>
-      <button class="profile-toast-close" type="button" aria-label="Закрыть уведомление" @click="dismissTopToast"><X :size="15" /></button>
-    </div>
-  </Transition>
+  <SiteAlert :message="topToastMessage" :tone="topToastTone" @close="dismissTopToast" />
+  <SiteAlert :message="nicknameMessage" :tone="(nicknameMessage === 'Никнейм обновлён.') ? 'success' : 'error'" @close="nicknameMessage = ''" />
+  <SiteAlert :message="steamMessage" :tone="(steamMessage === 'Steam ID сохранён.' || steamMessage === 'Steam ID удалён.') ? 'success' : 'error'" @close="steamMessage = ''" />
+  <SiteAlert :message="mediaError" tone="error" @close="mediaError = ''" />
+  <SiteAlert :message="mediaMessage" tone="success" @close="mediaMessage = ''" />
+  <SiteAlert :message="socialMessage" tone="error" @close="socialMessage = ''" />
+  <SiteAlert :message="notificationError" tone="error" @close="notificationError = ''" />
+  <SiteAlert :message="passwordMessage" :tone="(passwordMessage === 'Пароль изменён.') ? 'success' : 'error'" @close="passwordMessage = ''" />
+  <SiteAlert :message="emailMessage" :tone="(emailMessage === 'Адрес электронной почты обновлён.') ? 'success' : 'error'" @close="emailMessage = ''" />
+  <SiteAlert :message="twoFactorError" tone="error" @close="twoFactorError = ''" />
+  <SiteAlert :message="twoFactorMessage" tone="success" @close="twoFactorMessage = ''" />
+  <SiteAlert :message="sessionsError" tone="error" @close="sessionsError = ''" />
+
+
   <section class="welcome-section route-intro" aria-labelledby="settings-page-title">
     <div class="welcome-copy">
       <div class="eyebrow"><span class="eyebrow-line"></span> АККАУНТ <span class="eyebrow-slash">/</span> SETTINGS</div>
@@ -741,7 +742,7 @@ onBeforeUnmount(() => {
       <form class="settings-block settings-form" @submit.prevent="saveNickname">
         <div class="settings-block-heading"><UserRound :size="15" /><strong>Никнейм</strong></div>
         <label class="auth-field"><span>Имя профиля</span><input v-model.trim="accountForm.nickname" class="auth-input" type="text" autocomplete="nickname" required minlength="2" maxlength="32" pattern="[\p{L}\p{N}_!?#@]+" v-tooltip="'Только буквы, цифры и символы _ ! ? # @. Без пробелов и ссылок.'" :aria-invalid="Boolean(errorFor(accountErrors, 'nickname'))" /><span v-if="errorFor(accountErrors, 'nickname')" class="field-error">{{ errorFor(accountErrors, 'nickname') }}</span></label>
-        <p v-if="nicknameMessage" class="settings-message" role="status">{{ nicknameMessage }}</p>
+
         <div class="settings-actions"><span>Ваш основной никнейм, который будет указываться на сайте в статистике, блокировках, активных матчах и тд.</span><button class="dialog-primary" type="submit" :disabled="!nicknameChanged || accountBusy">{{ accountBusy ? 'Сохраняем…' : 'Сохранить никнейм' }}</button></div>
       </form>
 
@@ -762,12 +763,12 @@ onBeforeUnmount(() => {
         <div class="settings-block-heading"><Link2 :size="15" /><strong>Привязать Steam ID</strong></div>
         <label class="auth-field"><span>SteamID64 или SteamAuth2</span><input v-model.trim="steamIdForm.steamId" class="auth-input" type="text" autocomplete="off" maxlength="32" pattern="([0-9]{17}|[Ss][Tt][Ee][Aa][Mm]_[0-5]:[01]:[0-9]{1,10})" placeholder="76561198000000000 или STEAM_0:1:12345678" v-tooltip="'Введите SteamID64 из 17 цифр или SteamAuth2 в формате STEAM_0:1:12345678.'" :disabled="Boolean(account.steamId)" :aria-invalid="Boolean(errorFor(steamErrors, 'steamId'))" /><span v-if="errorFor(steamErrors, 'steamId')" class="field-error">{{ errorFor(steamErrors, 'steamId') }}</span></label>
         <p v-if="account.steamId" class="settings-message" role="status">Изменение или удаление привязанного Steam ID доступно только через тикет администрации.</p>
-        <p v-if="steamMessage" class="settings-message" role="status">{{ steamMessage }}</p>
+
         <div class="settings-actions"><span>Поддерживаются SteamID64 и SteamAuth2</span><button v-if="!account.steamId" class="dialog-primary" type="submit" :disabled="!steamIdChanged || steamBusy">{{ steamBusy ? 'Сохраняем…' : 'Привязать Steam ID' }}</button></div>
       </form>
 
-      <p v-if="mediaError" class="auth-message" role="alert">{{ mediaError }}</p>
-      <p v-else-if="mediaMessage" class="settings-message" role="status">{{ mediaMessage }}</p>
+
+
     </section>
 
     <section v-else-if="activeTab === 'social'" id="settings-panel-social" class="section-panel settings-panel" role="tabpanel" aria-labelledby="settings-tab-social">
@@ -782,7 +783,7 @@ onBeforeUnmount(() => {
             <span v-if="errorFor(socialErrors, `socialLinks.${platform.id}`)" class="field-error">{{ errorFor(socialErrors, `socialLinks.${platform.id}`) }}</span>
           </label>
         </div>
-        <p v-if="socialMessage" class="settings-message" role="status">{{ socialMessage }}</p>
+
         <div class="settings-actions"><span>Ссылки открываются в новой вкладке</span><button class="dialog-primary" type="submit" :disabled="socialBusy">{{ socialBusy ? 'Сохраняем…' : 'Сохранить ссылки' }}</button></div>
       </form>
     </section>
@@ -800,7 +801,7 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <p class="settings-description">{{ notificationSettings.pushConfigured ? 'Push работает в этом браузере после получения разрешения.' : 'Для push нужно установить Web Push зависимость и задать VAPID ключи на сервере.' }}</p>
-        <p v-if="notificationError" class="auth-message" role="alert">{{ notificationError }}</p>
+
         <div class="notification-setting-row notification-master-row">
           <div><strong>Уведомления аккаунта</strong><span>Показывать выбранные события в центре уведомлений сайта.</span></div>
           <label class="settings-switch"><input type="checkbox" aria-label="Уведомления аккаунта" :checked="notificationSettings.preferences.enabled" :disabled="notificationBusy" @change="updateNotificationSetting('enabled', ($event.target as HTMLInputElement).checked)" /><span aria-hidden="true"></span></label>
@@ -810,7 +811,7 @@ onBeforeUnmount(() => {
           <label class="settings-switch"><input type="checkbox" :aria-label="category.title" :checked="notificationSettings.preferences[category.id]" :disabled="notificationBusy || !notificationSettings.preferences.enabled" @change="updateNotificationSetting(category.id, ($event.target as HTMLInputElement).checked)" /><span aria-hidden="true"></span></label>
         </div>
       </div>
-      <p v-else-if="notificationError" class="auth-message" role="alert">{{ notificationError }}</p>
+
       <p v-else class="settings-description">Загружаем параметры уведомлений…</p>
     </section>
     <section v-else id="settings-panel-security" class="section-panel settings-panel" role="tabpanel" aria-labelledby="settings-tab-security">
@@ -823,7 +824,7 @@ onBeforeUnmount(() => {
           <label class="auth-field"><span>Новый пароль</span><input v-model="passwordForm.password" class="auth-input" type="password" autocomplete="new-password" required minlength="8" /><span v-if="errorFor(passwordErrors, 'password')" class="field-error">{{ errorFor(passwordErrors, 'password') }}</span></label>
           <label class="auth-field"><span>Повторите новый пароль</span><input v-model="passwordForm.password_confirmation" class="auth-input" type="password" autocomplete="new-password" required minlength="8" /></label>
         </div>
-        <p v-if="passwordMessage" class="settings-message" role="status">{{ passwordMessage }}</p>
+
         <div class="settings-actions"><span>Не менее 8 символов</span><button class="dialog-primary" type="submit" :disabled="passwordBusy">{{ passwordBusy ? 'Обновляем…' : 'Обновить пароль' }}</button></div>
       </form>
 
@@ -831,7 +832,7 @@ onBeforeUnmount(() => {
         <div class="settings-block-heading"><Mail :size="15" /><strong>Адрес электронной почты</strong></div>
         <label class="auth-field"><span>Email</span><input v-model.trim="accountForm.email" class="auth-input" type="email" autocomplete="email" required maxlength="254" :aria-invalid="Boolean(errorFor(accountErrors, 'email'))" /><span v-if="errorFor(accountErrors, 'email')" class="field-error">{{ errorFor(accountErrors, 'email') }}</span></label>
         <label v-if="emailChanged" class="auth-field"><span>Текущий пароль для смены email</span><input v-model="accountForm.current_password" class="auth-input" type="password" autocomplete="current-password" required :aria-invalid="Boolean(errorFor(accountErrors, 'current_password'))" /><span v-if="errorFor(accountErrors, 'current_password')" class="field-error">{{ errorFor(accountErrors, 'current_password') }}</span></label>
-        <p v-if="emailMessage" class="settings-message" role="status">{{ emailMessage }}</p>
+
         <div class="settings-actions"><span>Email виден только вам</span><button class="dialog-primary" type="submit" :disabled="!emailChanged || accountBusy">{{ accountBusy ? 'Сохраняем…' : 'Сохранить email' }}</button></div>
       </form>
 
@@ -844,17 +845,17 @@ onBeforeUnmount(() => {
         <form v-else class="settings-form" @submit.prevent="turnOffTwoFactor">
           <p class="settings-description">Для отключения подтвердите действие одноразовым кодом из приложения.</p>
           <label class="auth-field"><span>Код подтверждения</span><input v-model.trim="twoFactorCode" class="auth-input" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required placeholder="000000" /></label>
-          <p v-if="twoFactorError" class="auth-message" role="alert">{{ twoFactorError }}</p>
-          <p v-if="twoFactorMessage" class="settings-message" role="status">{{ twoFactorMessage }}</p>
+
+
           <div class="settings-actions"><span>Дополнительная защита входа</span><button class="settings-remove-button" type="submit" :disabled="twoFactorBusy"><Shield :size="13" /> {{ twoFactorBusy ? 'Проверяем…' : 'Отключить' }}</button></div>
         </form>
-        <p v-if="twoFactorError && !twoFactorSetup && !account.twoFactorEnabled" class="auth-message" role="alert">{{ twoFactorError }}</p>
-        <p v-if="twoFactorMessage && !account.twoFactorEnabled" class="settings-message" role="status">{{ twoFactorMessage }}</p>
+
+
       </section>
 
       <section class="settings-block" aria-labelledby="settings-sessions-title">
         <div class="settings-block-heading"><Monitor :size="15" /><strong id="settings-sessions-title">Активность с устройств</strong></div>
-        <p v-if="sessionsError" class="auth-message" role="alert">{{ sessionsError }}</p>
+
         <p v-if="sessionsLoading" class="settings-description" role="status">Загружаем сеансы…</p>
         <div v-else-if="sessions.length" class="settings-session-list">
           <article v-for="session in sessions" :key="session.id" class="settings-session-row">
@@ -880,7 +881,7 @@ onBeforeUnmount(() => {
           <div class="two-factor-qr"><img :src="twoFactorSetup.qrCode" alt="QR-код настройки Google Authenticator" width="220" height="220" /></div>
           <div class="settings-secret"><span>Ключ настройки</span><code>{{ twoFactorSetup.secret }}</code></div>
           <label class="auth-field"><span>Одноразовый код</span><input v-model.trim="twoFactorCode" class="auth-input" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required placeholder="000000" :aria-invalid="Boolean(twoFactorError)" /></label>
-          <p v-if="twoFactorError" class="auth-message" role="alert">{{ twoFactorError }}</p>
+
           <div class="dialog-actions">
             <button class="dialog-secondary" type="button" :disabled="twoFactorBusy" @click="closeTwoFactorSetup">Отмена</button>
             <button class="dialog-primary" type="submit" :disabled="twoFactorBusy">{{ twoFactorBusy ? 'Проверяем…' : 'Подтвердить подключение' }}</button>
@@ -894,7 +895,7 @@ onBeforeUnmount(() => {
       <div v-if="sensitiveChangeAction" class="modal-backdrop" @click.self="closeSensitiveChangeDialog" @keydown.esc="closeSensitiveChangeDialog">
         <form class="info-dialog auth-two-factor-dialog settings-security-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="sensitive-change-title" @submit.prevent="confirmSensitiveChange">
           <button class="dialog-close" type="button" aria-label="Закрыть" :disabled="accountBusy || passwordBusy" @click="closeSensitiveChangeDialog"><X :size="18" /></button>
-          <div class="section-kicker">MATCHSTRIKE / ACCOUNT</div>
+          <div class="section-kicker">{{ websiteSettings.name.toUpperCase() }} / ACCOUNT</div>
           <h2 id="sensitive-change-title">Подтверждение изменения</h2>
           <div class="auth-form auth-two-factor">
             <p class="auth-two-factor-copy">{{ sensitiveChangeAction === 'email' ? 'Введите шестизначный код из Google Authenticator, чтобы изменить email.' : 'Введите шестизначный код из Google Authenticator, чтобы изменить пароль.' }}</p>

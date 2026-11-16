@@ -4,6 +4,9 @@ import { router } from './router'
 import { tooltip } from './tooltip'
 import './home.css'
 import './theme.css'
+import './admin.css'
+import './alerts.css'
+import './landing.css'
 import './tooltip.css'
 
 createApp(AppRoot).directive('tooltip', tooltip).use(router).mount('#app')

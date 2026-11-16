@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import SiteAlert from './components/SiteAlert.vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { websiteSettings } from './websiteSettings'
 import { useRoute, useRouter } from 'vue-router'
 import { Users, Plus, LockKeyhole, Crown, ArrowLeft, ArrowUpRight, X, Copy, Play, Timer, Map, Settings, ShieldCheck, LoaderCircle, Swords, Trophy } from '@lucide/vue'
 import { getCurrentUser, getLobbies, getLobby, saveLobby, takeLobbySeat, leaveLobby, startLobby, cancelLobby, kickLobbyMember } from './api'
@@ -78,11 +80,8 @@ async function refresh(force = false) {
   const selectedId = selectedRoomId.value
   const isCurrent = () => !disposed && id === version && request === refreshRequest && selectedId === selectedRoomId.value
   try {
-    const data = await getLobbies(page.value)
-    if (!isCurrent()) return
-    listing.value = data
     if (selectedId) {
-      const updated = data.rooms.find(item => item.id === selectedId) ?? (data.myRoom?.id === selectedId ? data.myRoom : await getLobby(selectedId))
+      const updated = await getLobby(selectedId)
       if (isCurrent()) {
         const wasMember = room.value?.members.some(member => member.userId === user.value?.id)
         room.value = updated
@@ -90,6 +89,9 @@ async function refresh(force = false) {
           error.value = 'Вас исключили из комнаты. Повторно войти можно через 15 секунд после исключения.'
         }
       }
+    } else {
+      const data = await getLobbies(page.value)
+      if (isCurrent()) listing.value = data
     }
   } catch (e) { if (isCurrent()) error.value = e instanceof Error ? e.message : 'Не удалось загрузить лобби.' }
   finally {
@@ -104,8 +106,13 @@ async function act(work: () => Promise<void>) {
   finally { busy.value = false; void refresh() }
 }
 async function openEditor(edit = false) {
+  if (!websiteSettings.value.lobbyEnabled) return
   if (!user.value) { login(); return }
   if (!user.value.steamId) { error.value = 'Привяжите Steam в настройках профиля, чтобы создавать комнаты.'; return }
+  if (!listing.value) {
+    try { listing.value = await getLobbies(page.value) }
+    catch (e) { error.value = e instanceof Error ? e.message : 'Не удалось загрузить параметры лобби.'; return }
+  }
   editing.value = edit ? room.value?.id : undefined
   form.value = edit && room.value ? { name: room.value.name, team_size: room.value.teamSize, format: room.value.format, maps: [...room.value.maps], rounds_per_half: room.value.roundsPerHalf, team_a_name: room.value.teamAName, team_b_name: room.value.teamBName, password: '' } : { ...defaultSettings(), name: `Комната ${user.value.nickname}`, maps: listing.value?.maps.slice(0, 1) ?? [] }
   formError.value = ''; changePassword.value = !edit
@@ -147,7 +154,7 @@ async function joinPrivate() {
   catch (e) { formError.value = e instanceof Error ? e.message : 'Не удалось войти.' }
   finally { busy.value = false; void refresh() }
 }
-async function copy(text: string, label: string) { try { await navigator.clipboard.writeText(text); copied.value = label; setTimeout(() => { copied.value = '' }, 2000) } catch { error.value = 'Не удалось скопировать. Выделите и скопируйте значение вручную.' } }
+async function copy(text: string, label: string) { copied.value = ''; try { await navigator.clipboard.writeText(text); copied.value = label; /* Dismissed by the shared alert timer. */ } catch { error.value = 'Не удалось скопировать. Выделите и скопируйте значение вручную.' } }
 onMounted(async () => {
   try { user.value = await getCurrentUser() } catch { user.value = null }
   if (disposed) return
@@ -160,25 +167,16 @@ onUnmounted(() => { disposed = true; version++; if (poll) clearInterval(poll); i
 </script>
 
 <template>
+  <SiteAlert :message="error" :tone="steamWarning ? 'warning' : 'error'" :title="steamWarning ? 'Привяжите Steam к профилю' : undefined" :to="steamWarning ? '/settings' : undefined" :action-label="steamWarning ? 'Настройки профиля' : undefined" @close="error = ''" />
+  <SiteAlert :message="formError" @close="formError = ''" />
+
   <div class="lobby-page">
     <section class="welcome-section route-intro"><div class="welcome-copy"><div class="eyebrow"><span class="eyebrow-line"></span> СОБЕРИТЕ СВОЙ СОСТАВ <span class="eyebrow-slash">/</span> LOBBY</div><h1>Лобби</h1><p>Свои команды. Свои правила. Ваш следующий матч начинается здесь.</p></div><div class="route-intro-mark"><Users :size="28" :stroke-width="1.5" /></div></section>
-    <Teleport to="body">
-      <Transition name="profile-toast">
-        <div v-if="error" class="profile-toast lobby-toast" :class="steamWarning ? 'is-warning' : 'is-error'" role="alert" aria-atomic="true">
-          <span class="profile-toast-icon"><ShieldCheck v-if="steamWarning" :size="17" /><X v-else :size="16" /></span>
-          <div class="lobby-toast-copy">
-            <strong v-if="steamWarning">Привяжите Steam к профилю</strong>
-            <span class="profile-toast-message">{{ error }}</span>
-            <RouterLink v-if="steamWarning" class="lobby-toast-settings" to="/settings" @click="error = ''">Настройки профиля <ArrowUpRight :size="13" /></RouterLink>
-          </div>
-          <button class="profile-toast-close" type="button" aria-label="Закрыть уведомление" @click="error = ''"><X :size="15" /></button>
-        </div>
-      </Transition>
-    </Teleport>
+
     <Transition name="profile-content" mode="out-in">
     <PageLoader v-if="loading" key="loading" :message="selectedRoomId ? 'Загружаем комнату…' : 'Загружаем комнаты…'" />
     <div v-else-if="selectedRoomId && !room" key="room-unavailable" class="lobby-empty lobby-content"><h3>Не удалось открыть комнату</h3><p>Попробуйте загрузить её ещё раз или вернитесь к списку комнат.</p><div class="lobby-room-actions"><button class="friend-action" type="button" @click="back()">Все комнаты</button><button class="lobby-primary" type="button" @click="retryLoading()">Повторить</button></div></div>
-    <div v-else-if="!listing" key="listing-unavailable" class="lobby-empty lobby-content"><h3>Не удалось загрузить лобби</h3><p>Попробуйте обновить список комнат.</p><button class="lobby-primary" type="button" @click="retryLoading()">Повторить</button></div>
+    <div v-else-if="!listing && !room" key="listing-unavailable" class="lobby-empty lobby-content"><h3>Не удалось загрузить лобби</h3><p>Попробуйте обновить список комнат.</p><button class="lobby-primary" type="button" @click="retryLoading()">Повторить</button></div>
     <div v-else-if="!room" key="listing" class="lobby-content">
       <div class="lobby-toolbar"><div><span class="section-kicker">ИГРАТЬ ВМЕСТЕ</span><h2>Комнаты игроков <small>{{ listing?.pagination.total ?? 0 }}</small></h2><p><span class="lobby-online-dot"></span> Свободных серверов: {{ listing?.availableServers ?? 0 }}</p></div><button class="lobby-primary" type="button" :disabled="busy || !!listing?.myRoom" @click="openEditor()"><Plus :size="17" /> Создать лобби</button></div>
       <button v-if="listing?.myRoom" class="lobby-mine" type="button" @click="openRoom(listing.myRoom)"><Users :size="20" /><span>Вы уже в комнате<strong>{{ listing.myRoom.name }}</strong></span><ArrowUpRight :size="20" /></button>
@@ -190,11 +188,12 @@ onUnmounted(() => { disposed = true; version++; if (poll) clearInterval(poll); i
       <p class="lobby-footnote"><ShieldCheck :size="15" /> Для участия нужен привязанный Steam. Сервер и пароль выдаются участникам после запуска капитаном.</p>
     </div>
     <div v-else :key="`room-${room.id}`" class="lobby-content">
+      <div v-if="!websiteSettings.lobbyEnabled" class="empty-state section-empty" role="status"><span class="empty-icon"><ShieldCheck :size="22" /></span><div><strong>Лобби временно отключено</strong><span>Новые игры недоступны. Текущий матч продолжится; вы можете покинуть или закрыть комнату.</span></div></div>
       <button class="lobby-back" type="button" @click="back()"><ArrowLeft :size="15" /> Все комнаты</button>
       <section class="lobby-room-hero">
         <LobbyMapBackdrop :maps="room.maps" :format="room.format" surface="page" />
         <div class="lobby-room-title"><span class="room-status">{{ stateLabels[room.status] }} <LockKeyhole v-if="room.isPrivate" :size="12" /></span><h2>{{ room.name }}</h2><p>{{ room.teamSize }} × {{ room.teamSize }} <i>·</i> {{ room.format }} <i>·</i> MR{{ room.roundsPerHalf }}</p></div>
-        <div class="lobby-room-actions"><button v-if="captain && room.status === 'waiting'" class="friend-action" :disabled="busy" @click="openEditor(true)"><Settings :size="14" /> Настройки</button><button class="friend-action" @click="invite()"><Copy :size="14" /> Пригласить</button></div>
+        <div class="lobby-room-actions"><button v-if="captain && room.status === 'waiting' && websiteSettings.lobbyEnabled" class="friend-action" :disabled="busy" @click="openEditor(true)"><Settings :size="14" /> Настройки</button><button v-if="websiteSettings.lobbyEnabled" class="friend-action" @click="invite()"><Copy :size="14" /> Пригласить</button></div>
       </section>
       <div class="lobby-room-maps"><span><Map :size="15" /> Карты матча</span><b v-for="(map, index) in room.maps" :key="map"><small>{{ String(index + 1).padStart(2, '0') }}</small>{{ map }}</b></div>
       <div v-if="room.status === 'provisioning' || room.status === 'joining'" class="lobby-countdown"><Timer :size="27" /><div><strong>{{ countdown }}</strong><span>на подключение и начало матча</span></div><p>{{ room.status === 'provisioning' ? 'Игровой сервер готовит карту и защищает вход. Адрес появится после подтверждения готовности.' : room.preparationEndsAt ? 'Все игроки заняли свои стороны и появились на карте. Идёт 30-секундная подготовка перед ножевым раундом.' : 'Подключитесь через Steam и займите свою сторону. Когда все игроки появятся на карте, начнётся отсчёт 30 секунд.' }}</p></div>
@@ -205,24 +204,23 @@ onUnmounted(() => { disposed = true; version++; if (poll) clearInterval(poll); i
           <div v-for="seat in room.teamSize" :key="seat" class="lobby-seat" :class="{ 'is-occupied': seatMember(team, seat), 'is-me': seatMember(team, seat)?.userId === user?.id }">
             <span class="seat-number">{{ String(seat).padStart(2, '0') }}</span>
             <LobbyPlayer v-if="seatMember(team, seat)" :member="seatMember(team, seat)!" :captain="seatMember(team, seat)?.userId === room.captainId" :me="seatMember(team, seat)?.userId === user?.id" :can-kick="captain && room.status === 'waiting' && seatMember(team, seat)?.userId !== user?.id" :busy="busy" :show-connection="room.status !== 'waiting'" @kick="kick" />
-            <button v-else type="button" class="empty-seat-button" :disabled="busy || room.status !== 'waiting'" @click="occupy(team, seat)"><span class="seat-avatar empty"><Plus :size="20" /></span><span class="seat-player"><strong>Свободное место</strong><small>{{ room.status === 'waiting' ? 'Занять место в команде' : 'Состав зафиксирован' }}</small></span><ArrowUpRight :size="16" /></button>
+            <button v-else type="button" class="empty-seat-button" :disabled="busy || !websiteSettings.lobbyEnabled || room.status !== 'waiting'" @click="occupy(team, seat)"><span class="seat-avatar empty"><Plus :size="20" /></span><span class="seat-player"><strong>Свободное место</strong><small>{{ room.status === 'waiting' ? 'Занять место в команде' : 'Состав зафиксирован' }}</small></span><ArrowUpRight :size="16" /></button>
           </div>
         </section>
       </div>
       <div v-if="room.server && mine" class="lobby-connect"><div><span class="section-kicker">ВАШ ИГРОВОЙ СЕРВЕР</span><h3>{{ room.server.address }}</h3><p>Пароль: <code>{{ room.server.password }}</code><button type="button" aria-label="Скопировать пароль" @click="copy(room.server.password, 'Пароль')"><Copy :size="13" /></button></p></div><div><button class="friend-action" @click="copy(`password ${room.server.password}; connect ${room.server.address}`, 'Команда')"><Copy :size="14" /> Команда подключения</button><a class="lobby-primary" :href="`steam://connect/${room.server.address}/${encodeURIComponent(room.server.password)}`"><Play :size="15" /> Подключиться</a></div></div>
-      <footer v-if="!terminal" class="lobby-controls"><p><Crown :size="16" /> {{ captain ? 'Вы капитан комнаты' : 'Настройки и запуск — у капитана комнаты' }}<span v-if="room.status === 'waiting'">{{ filled ? 'Обе команды в сборе' : `Ожидаем ещё ${room.teamSize * 2 - room.members.length} игроков` }}</span></p><div><button v-if="mine && room.status === 'waiting'" class="friend-action" :disabled="busy" @click="act(async () => { await leaveLobby(room!.id); back() })">Покинуть</button><button v-if="captain && ['waiting', 'joining', 'provisioning'].includes(room.status)" class="friend-action" :disabled="busy" @click="act(async () => { await cancelLobby(room!.id); back() })">Закрыть комнату</button><button v-if="captain && room.status === 'waiting'" class="lobby-primary" :disabled="busy || !filled" @click="act(async () => { room = await startLobby(room!.id) })"><LoaderCircle v-if="busy" class="is-spinning" :size="16" /><Play v-else :size="16" /> Запустить матч</button><RouterLink v-if="room.matchId" class="friend-action" :to="`/matches/${room.matchId}`">Матч <ArrowUpRight :size="14" /></RouterLink></div></footer>
+      <footer v-if="!terminal" class="lobby-controls"><p><Crown :size="16" /> {{ captain ? 'Вы капитан комнаты' : 'Настройки и запуск — у капитана комнаты' }}<span v-if="room.status === 'waiting'">{{ filled ? 'Обе команды в сборе' : `Ожидаем ещё ${room.teamSize * 2 - room.members.length} игроков` }}</span></p><div><button v-if="mine && room.status === 'waiting'" class="friend-action" :disabled="busy" @click="act(async () => { await leaveLobby(room!.id); back() })">Покинуть</button><button v-if="captain && ['waiting', 'joining', 'provisioning'].includes(room.status)" class="friend-action" :disabled="busy" @click="act(async () => { await cancelLobby(room!.id); back() })">Закрыть комнату</button><button v-if="captain && room.status === 'waiting'" class="lobby-primary" :disabled="busy || !filled || !websiteSettings.lobbyEnabled" @click="act(async () => { room = await startLobby(room!.id) })"><LoaderCircle v-if="busy" class="is-spinning" :size="16" /><Play v-else :size="16" /> Запустить матч</button><RouterLink v-if="room.matchId" class="friend-action" :to="`/matches/${room.matchId}`">Матч <ArrowUpRight :size="14" /></RouterLink></div></footer>
     </div>
     </Transition>
-    <p v-if="copied" class="lobby-copied" role="status">{{ copied }} скопирована</p>
-    <dialog ref="editor" class="lobby-dialog" @click="event => { if (event.target === editor) editor?.close() }"><form @submit.prevent="submitRoom"><header><div><span class="section-kicker">ВАШ МАТЧ — ВАШИ ПРАВИЛА</span><h2>{{ editing ? 'Настройки комнаты' : 'Создать лобби' }}</h2></div><button type="button" aria-label="Закрыть" @click="editor?.close()"><X :size="20" /></button></header><p v-if="formError" class="lobby-alert" role="alert">{{ formError }}</p><label class="lobby-field">Название комнаты<input v-model.trim="form.name" required minlength="3" maxlength="64" /></label><div class="lobby-form-row"><label class="lobby-field">Команда A<input v-model.trim="form.team_a_name" required maxlength="40" /></label><label class="lobby-field">Команда B<input v-model.trim="form.team_b_name" required maxlength="40" /></label></div><fieldset><legend>Игроков за сторону</legend><div class="lobby-segments"><button v-for="size in [1, 2, 3, 4, 5]" :key="size" type="button" :aria-pressed="form.team_size === size" @click="form.team_size = size">{{ size }} × {{ size }}</button></div></fieldset><fieldset><legend>Формат матча</legend><div class="lobby-segments"><button v-for="format in (['Classic', 'BO1', 'BO3', 'BO5'] as const)" :key="format" type="button" :aria-pressed="form.format === format" @click="form.format = format">{{ format }}</button></div><p>{{ form.format === 'Classic' ? 'Обычный War на одной карте' : form.format === 'BO1' ? 'Серия из одной карты' : `Серия до ${form.format === 'BO3' ? 2 : 3} побед` }}</p></fieldset><fieldset><legend>Карты <small>{{ form.maps.length }} / {{ mapCount }}</small></legend><p>Выберите {{ mapCount }} {{ mapCount === 1 ? 'карту' : 'карты' }} в порядке игры.</p><div class="lobby-map-picker"><button v-for="map in listing?.maps ?? []" :key="map" type="button" :aria-pressed="form.maps.includes(map)" @click="toggleMap(map)"><span>{{ form.maps.includes(map) ? form.maps.indexOf(map) + 1 : '+' }}</span>{{ map }}</button></div><p v-if="!listing?.maps.length">Карты появятся после подключения сервера с включённым режимом лобби.</p></fieldset><div class="lobby-form-row"><label class="lobby-field">Раундов за сторону<select v-model.number="form.rounds_per_half"><option :value="15">MR15 — до 16 побед</option><option :value="12">MR12 — до 13 побед</option></select></label><label class="lobby-field">{{ editing ? 'Новый пароль комнаты' : 'Пароль комнаты' }}<input v-model="form.password" type="password" :disabled="!!editing && !changePassword" minlength="4" maxlength="64" autocomplete="new-password" placeholder="Без пароля — открытая" /></label></div><label v-if="editing" class="lobby-check"><input v-model="changePassword" type="checkbox" /> Изменить пароль (пустое поле снимет защиту)</label><p class="lobby-dialog-note"><ShieldCheck :size="15" /> Пароль комнаты нужен для входа в лобби. Пароль игрового сервера создаётся отдельно при запуске.</p><button class="lobby-primary" type="submit" :disabled="busy || form.maps.length !== mapCount"><LoaderCircle v-if="busy" class="is-spinning" :size="16" /><Plus v-else :size="16" /> {{ editing ? 'Сохранить настройки' : 'Создать комнату' }}</button></form></dialog>
-    <dialog ref="passwordDialog" class="lobby-dialog is-password"><form @submit.prevent="joinPrivate"><header><h2>Закрытая комната</h2><button type="button" aria-label="Закрыть" @click="passwordDialog?.close()"><X :size="19" /></button></header><p v-if="formError" class="lobby-alert" role="alert">{{ formError }}</p><label class="lobby-field">Пароль комнаты<input v-model="joinPassword" type="password" required maxlength="64" autocomplete="off" /></label><button class="lobby-primary" type="submit" :disabled="busy"><LockKeyhole :size="15" /> Занять место</button></form></dialog>
+    <SiteAlert :message="copied ? `${copied} скопирована` : ''" tone="success" @close="copied = ''" />
+    <dialog ref="editor" class="lobby-dialog" @click="event => { if (event.target === editor) editor?.close() }"><form @submit.prevent="submitRoom"><header><div><span class="section-kicker">ВАШ МАТЧ — ВАШИ ПРАВИЛА</span><h2>{{ editing ? 'Настройки комнаты' : 'Создать лобби' }}</h2></div><button type="button" aria-label="Закрыть" @click="editor?.close()"><X :size="20" /></button></header><label class="lobby-field">Название комнаты<input v-model.trim="form.name" required minlength="3" maxlength="64" /></label><div class="lobby-form-row"><label class="lobby-field">Команда A<input v-model.trim="form.team_a_name" required maxlength="40" /></label><label class="lobby-field">Команда B<input v-model.trim="form.team_b_name" required maxlength="40" /></label></div><fieldset><legend>Игроков за сторону</legend><div class="lobby-segments"><button v-for="size in [1, 2, 3, 4, 5]" :key="size" type="button" :aria-pressed="form.team_size === size" @click="form.team_size = size">{{ size }} × {{ size }}</button></div></fieldset><fieldset><legend>Формат матча</legend><div class="lobby-segments"><button v-for="format in (['Classic', 'BO1', 'BO3', 'BO5'] as const)" :key="format" type="button" :aria-pressed="form.format === format" @click="form.format = format">{{ format }}</button></div><p>{{ form.format === 'Classic' ? 'Обычный War на одной карте' : form.format === 'BO1' ? 'Серия из одной карты' : `Серия до ${form.format === 'BO3' ? 2 : 3} побед` }}</p></fieldset><fieldset><legend>Карты <small>{{ form.maps.length }} / {{ mapCount }}</small></legend><p>Выберите {{ mapCount }} {{ mapCount === 1 ? 'карту' : 'карты' }} в порядке игры.</p><div class="lobby-map-picker"><button v-for="map in listing?.maps ?? []" :key="map" type="button" :aria-pressed="form.maps.includes(map)" @click="toggleMap(map)"><span>{{ form.maps.includes(map) ? form.maps.indexOf(map) + 1 : '+' }}</span>{{ map }}</button></div><p v-if="!listing?.maps.length">Карты появятся после подключения сервера с включённым режимом лобби.</p></fieldset><div class="lobby-form-row"><label class="lobby-field">Раундов за сторону<select v-model.number="form.rounds_per_half"><option :value="15">MR15 — до 16 побед</option><option :value="12">MR12 — до 13 побед</option></select></label><label class="lobby-field">{{ editing ? 'Новый пароль комнаты' : 'Пароль комнаты' }}<input v-model="form.password" type="password" :disabled="!!editing && !changePassword" minlength="4" maxlength="64" autocomplete="new-password" placeholder="Без пароля — открытая" /></label></div><label v-if="editing" class="lobby-check"><input v-model="changePassword" type="checkbox" /> Изменить пароль (пустое поле снимет защиту)</label><p class="lobby-dialog-note"><ShieldCheck :size="15" /> Пароль комнаты нужен для входа в лобби. Пароль игрового сервера создаётся отдельно при запуске.</p><button class="lobby-primary" type="submit" :disabled="busy || form.maps.length !== mapCount"><LoaderCircle v-if="busy" class="is-spinning" :size="16" /><Plus v-else :size="16" /> {{ editing ? 'Сохранить настройки' : 'Создать комнату' }}</button></form></dialog>
+    <dialog ref="passwordDialog" class="lobby-dialog is-password"><form @submit.prevent="joinPrivate"><header><h2>Закрытая комната</h2><button type="button" aria-label="Закрыть" @click="passwordDialog?.close()"><X :size="19" /></button></header><label class="lobby-field">Пароль комнаты<input v-model="joinPassword" type="password" required maxlength="64" autocomplete="off" /></label><button class="lobby-primary" type="submit" :disabled="busy"><LockKeyhole :size="15" /> Занять место</button></form></dialog>
   </div>
 </template>
 
 <style scoped>
 .empty-seat-button { display:flex; align-items:center; gap:12px; flex:1; min-width:0; padding:0; border:0; background:none; color:inherit; text-align:left; }
 .lobby-content { min-width:0; }.lobby-content.profile-content-leave-active { pointer-events:none; }
-.lobby-toast-copy { display:grid; flex:1; min-width:0; gap:5px; }.lobby-toast-copy>strong { color:var(--text); font-size:12px; font-weight:700; }.lobby-toast-copy .profile-toast-message { overflow:visible; font-weight:400; overflow-wrap:anywhere; }.lobby-toast-settings { display:inline-flex; width:fit-content; align-items:center; gap:4px; color:var(--yellow); font-size:11px; font-weight:600; text-decoration:none; }.lobby-toast-settings:hover { text-decoration:underline; text-underline-offset:3px; }
 .lobby-page { color:var(--text); }.lobby-page button,.lobby-page input,.lobby-page select { font:inherit; }.lobby-page button { cursor:pointer; }.lobby-page button:disabled { opacity:.5; cursor:not-allowed; }.lobby-page h2,.lobby-page h3,.lobby-page p { margin:0; }.lobby-page button:focus-visible,.lobby-page a:focus-visible { outline:2px solid var(--yellow); outline-offset:4px; }
 .lobby-toolbar { display:flex; align-items:center; justify-content:space-between; gap:18px; margin:28px 0 22px; }.lobby-toolbar h2 { margin:7px 0 12px; font-size:23px; font-weight:700; letter-spacing:-.6px; }.lobby-toolbar h2 small { color:var(--subtle); font-size:14px; margin-left:7px; }.lobby-toolbar p { display:flex; gap:7px; align-items:center; color:var(--muted); font-size:11px; }.lobby-online-dot { width:6px; height:6px; background:var(--yellow); border-radius:50%; }
 .lobby-primary { display:inline-flex; align-items:center; justify-content:center; gap:9px; border:0; border-radius:10px; padding:13px 18px; background:var(--yellow); color:var(--bg); font-size:12px!important; font-weight:700!important; text-decoration:none; white-space:nowrap; }.lobby-primary:hover:not(:disabled) { filter:brightness(1.08); }

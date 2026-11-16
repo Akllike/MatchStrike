@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SiteAlert from '../components/SiteAlert.vue'
+import { websiteSettings } from '../websiteSettings'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { CheckCircle2, CircleHelp, MessageSquare, Plus, RefreshCw, Send, UserRound, X } from '@lucide/vue'
 import { createTicket, getTicket, getTickets, markTicketRead, replyToTicket, setTicketStatus } from '../api'
@@ -242,8 +244,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <SiteAlert :message="error" action-label="Повторить" @action="refreshWorkspace" @close="error = ''" />
+
   <div class="tickets-heading section-heading">
-    <div><div class="section-kicker">MATCHSTRIKE / SUPPORT</div><h2>Тикеты</h2></div>
+    <div><div class="section-kicker">{{ websiteSettings.name.toUpperCase() }} / SUPPORT</div><h2>Тикеты</h2></div>
     <div class="tickets-heading-actions">
       <button class="tickets-icon-button dialog-secondary" type="button" v-tooltip="'Обновить тикеты'" aria-label="Обновить тикеты" @click="refreshWorkspace"><RefreshCw :size="15" /></button>
       <span v-if="!admin" class="tickets-create-control" :class="{ 'is-blocked': hasOpenTicket }" :tabindex="hasOpenTicket ? 0 : undefined" :aria-label="hasOpenTicket ? 'Создать тикет недоступно' : undefined" :aria-describedby="hasOpenTicket ? 'tickets-create-reason' : undefined">
@@ -252,7 +256,7 @@ onBeforeUnmount(() => {
       </span>
     </div>
   </div>
-  <p v-if="error" class="tickets-error" role="alert">{{ error }} <button type="button" @click="refreshWorkspace">Повторить</button></p>
+
   <div class="tickets-workspace">
     <section class="tickets-list" aria-label="Список тикетов">
       <div class="tickets-list-heading"><strong>Обращения</strong><span>{{ tickets.length }}</span></div>

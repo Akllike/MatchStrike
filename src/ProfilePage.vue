@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import SiteAlert from './components/SiteAlert.vue'
+import { websiteSettings } from './websiteSettings'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Activity, CalendarDays, Check, ChevronRight, Film, Flag, LoaderCircle, Share2, Swords, Target, Trophy, Upload, UserPlus, UserRound, UserRoundMinus, Users, X } from '@lucide/vue'
+import { Activity, CalendarDays, ChevronRight, Film, Flag, LoaderCircle, Share2, Swords, Target, Trophy, Upload, UserPlus, UserRound, UserRoundMinus, Users, X } from '@lucide/vue'
 import PageLoader from './components/PageLoader.vue'
 import ProfileMatchList from './components/ProfileMatchList.vue'
 import ProfileMapWinRates from './components/ProfileMapWinRates.vue'
@@ -55,7 +57,6 @@ const reportReasons = [
   { value: 'abuse', label: 'Оскорбления или травля' },
   { value: 'other', label: 'Другое нарушение' },
 ] as const
-let successToastTimeout: number | undefined
 
 const mediaSpecs = {
   avatar: { title: 'Изменить аватар', maxWidth: 2048, maxHeight: 2048, recommended: '512 × 512', maxBytes: 5 * 1024 * 1024, maxSize: '5 МБ' },
@@ -92,19 +93,14 @@ function focusProfileTab(index: number) {
 }
 
 function dismissSuccessToast() {
-  if (successToastTimeout !== undefined) window.clearTimeout(successToastTimeout)
-  successToastTimeout = undefined
   successToast.value = ''
   toastTicketId.value = null
 }
 
 function showTopToast(message: string, tone: 'success' | 'error' = 'success', ticketId: number | null = null) {
-  if (successToastTimeout !== undefined) window.clearTimeout(successToastTimeout)
-  successToastTimeout = undefined
   toastTone.value = tone
   toastTicketId.value = ticketId
   successToast.value = message
-  if (ticketId === null) successToastTimeout = window.setTimeout(dismissSuccessToast, 5000)
 }
 
 function showSuccessToast(message: string) {
@@ -432,8 +428,8 @@ const friendshipLabel = computed(() => {
 })
 
 const joinedLabel = computed(() => {
-  if (!profile.value?.joinedAt) return 'Участник MatchStrike'
-  return `В MatchStrike с ${new Date(`${profile.value.joinedAt}T00:00:00`).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}`
+  if (!profile.value?.joinedAt) return 'Участник ' + websiteSettings.value.name
+  return `В ${websiteSettings.value.name} с ${new Date(`${profile.value.joinedAt}T00:00:00`).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}`
 })
 
 async function loadProfile() {
@@ -687,6 +683,10 @@ watch(nickname, loadProfile, { immediate: true })
 </script>
 
 <template>
+  <SiteAlert :message="actionMessage" tone="warning" @close="actionMessage = ''" />
+  <SiteAlert :message="successToast" :tone="toastTone" :to="toastTicketId !== null ? `/tickets?ticket=${toastTicketId}` : undefined" @close="dismissSuccessToast" />
+  <SiteAlert :message="reportMessage" tone="error" @close="reportMessage = ''" />
+
   <Transition name="profile-content" mode="out-in">
     <PageLoader v-if="loading" message="Загружаем профиль…" />
     <div v-else-if="loadError" class="empty-state section-empty profile-state-error">
@@ -696,7 +696,7 @@ watch(nickname, loadProfile, { immediate: true })
     <div v-else-if="profile" class="profile-page">
     <section class="profile-hero" :class="{ 'is-blocked': profile.isBlocked }" aria-label="Профиль игрока">
       <div class="profile-cover" :class="{ 'has-cover': profile.coverUrl, 'is-blocked': profile.isBlocked }" :style="profile.coverUrl ? { backgroundImage: `linear-gradient(90deg, rgba(10,11,12,.76), rgba(10,11,12,.12)), url('${profile.coverUrl}')` } : undefined">
-        <div class="profile-cover-code">MATCHSTRIKE <span>/ PLAYER CARD</span></div>
+        <div class="profile-cover-code">{{ websiteSettings.name.toUpperCase() }} <span>/ PLAYER CARD</span></div>
         <template v-if="profile.isOwn">
           <button class="profile-edit-cover" type="button" :disabled="mediaBusy !== null" @click="openMediaDialog('cover')">
             Изменить шапку
@@ -727,7 +727,7 @@ watch(nickname, loadProfile, { immediate: true })
         </div>
         <RouterLink v-else-if="profile.isOwn && !profile.isBlocked" class="profile-settings-link" to="/settings">Настройки профиля</RouterLink>
       </div>
-      <p v-if="actionMessage" class="profile-action-message" role="status">{{ actionMessage }}</p>
+
     </section>
 
     <div v-if="!profile.isBlocked" class="profile-tabs" role="tablist" aria-label="Разделы профиля">
@@ -1045,7 +1045,7 @@ watch(nickname, loadProfile, { immediate: true })
       <div class="donut-tabs profile-match-modes" :class="{ 'is-war': profileMatchMode === 'War' }" role="group" aria-label="Режим истории матчей">
         <button v-for="mode in (['Mix', 'War'] as const)" :key="mode" type="button" :aria-pressed="profileMatchMode === mode" @click="selectProfileMatchMode(mode)"><Swords v-if="mode === 'War'" :size="16" /><Users v-else :size="16" />{{ mode }}</button>
       </div>
-      <p v-if="profileMatchesError" class="auth-message" role="alert">{{ profileMatchesError }} <button class="auth-inline-link" type="button" @click="loadProfileMatches(profileMatches.length ? profileMatchesPage + 1 : 1, profileMatches.length > 0)">Повторить</button></p>
+      <SiteAlert :message="profileMatchesError" action-label="Повторить" @action="loadProfileMatches(profileMatches.length ? profileMatchesPage + 1 : 1, profileMatches.length > 0)" @close="profileMatchesError = ''" />
       <PageLoader v-if="profileMatchesLoading && !profileMatches.length" message="Загружаем историю матчей…" />
       <ProfileMatchList v-else-if="profileMatchesLoaded || profileMatches.length" :matches="profileMatches" :mode="profileMatchMode" />
       <div v-if="profileMatchesLastPage > 1" class="donut-pagination profile-matches-pagination">
@@ -1082,7 +1082,7 @@ watch(nickname, loadProfile, { immediate: true })
       tabindex="0"
     >
       <div class="section-heading">
-        <div><div class="section-kicker">MATCHSTRIKE / SOCIAL</div><h2>Друзья игрока</h2></div>
+        <div><div class="section-kicker">{{ websiteSettings.name.toUpperCase() }} / SOCIAL</div><h2>Друзья игрока</h2></div>
         <span class="section-count">{{ profile.friends.length.toString().padStart(2, '0') }} <span>ДРУЗЕЙ</span></span>
       </div>
       <div v-if="profile.friends.length" class="friends-list profile-friends-list">
@@ -1093,7 +1093,7 @@ watch(nickname, loadProfile, { immediate: true })
           </RouterLink>
           <div class="friend-details">
             <RouterLink class="friend-request-nickname" :to="{ name: 'profile', params: { nickname: friend.nickname } }">{{ friend.nickname }}</RouterLink>
-            <span class="friend-last-seen" :class="{ 'is-blocked':friend.isBlocked }">{{ friend.isBlocked ? 'Заблокирован' : 'Профиль MatchStrike' }}</span>
+            <span class="friend-last-seen" :class="{ 'is-blocked':friend.isBlocked }">{{ friend.isBlocked ? 'Заблокирован' : 'Профиль ' + websiteSettings.name }}</span>
           </div>
           <div class="friend-actions profile-friend-actions">
             <RouterLink class="friend-action friend-profile-action" :to="{ name: 'profile', params: { nickname: friend.nickname } }">
@@ -1110,14 +1110,7 @@ watch(nickname, loadProfile, { immediate: true })
     </Transition>
 
     <Teleport to="body">
-      <Transition name="profile-toast">
-        <div v-if="successToast" class="profile-toast" :class="{ 'is-error': toastTone === 'error' }" :role="toastTone === 'error' ? 'alert' : 'status'" :aria-live="toastTone === 'error' ? 'assertive' : 'polite'" aria-atomic="true">
-          <span class="profile-toast-icon motion-safe:animate-pulse"><X v-if="toastTone === 'error'" :size="15" :stroke-width="2.5" /><Check v-else :size="15" :stroke-width="2.5" /></span>
-          <span class="profile-toast-message">{{ successToast }}</span>
-          <RouterLink v-if="toastTicketId !== null" class="profile-toast-action dialog-primary" :to="{ name: 'tickets', query: { ticket: String(toastTicketId) } }" @click="dismissSuccessToast">Перейти</RouterLink>
-          <button class="profile-toast-close" type="button" aria-label="Закрыть уведомление" @click="dismissSuccessToast"><X :size="15" /></button>
-        </div>
-      </Transition>
+
 
       <Transition name="modal">
         <div v-if="mediaDialog && activeMediaSpec" class="modal-backdrop" @click.self="closeMediaDialog">
@@ -1174,7 +1167,7 @@ watch(nickname, loadProfile, { immediate: true })
             <span class="report-details-heading"><span>Комментарий <small>необязательно</small></span><span class="report-character-count">{{ reportForm.details.length }} / 1000</span></span>
             <textarea v-model="reportForm.details" class="auth-input report-textarea" maxlength="1000" rows="4" placeholder="Расскажите подробнее о ситуации"></textarea>
           </label>
-          <p v-if="reportMessage" class="auth-message" role="alert">{{ reportMessage }}</p>
+
           <div class="dialog-actions">
             <button class="dialog-secondary" type="button" @click="reportOpen = false">Отмена</button>
             <button class="dialog-primary" type="submit" :disabled="reportBusy">{{ reportBusy ? 'Отправляем…' : 'Отправить жалобу' }}</button>

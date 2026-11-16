@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { websiteSettings } from './websiteSettings'
 import { ArrowRight, Ban, ChevronDown, Gamepad2, Server, Swords, Users } from '@lucide/vue'
 import { getApiHealth, getGameMatches, getPublicServers } from './api'
 import type { GameMatch, PublicGameServer } from './api'
@@ -40,32 +41,13 @@ const summaryStats = computed(() => [
   },
 ])
 
-const faqItems = [
-  {
-    id: 'servers',
-    question: 'Как подключиться к серверу?',
-    answer: 'Выберите сервер в списке ниже и нажмите кнопку подключения. Список появится после настройки игровых серверов.',
-  },
-  {
-    id: 'matches',
-    question: 'Где посмотреть результаты матчей?',
-    answer: 'Последние пять матчей сообщества будут отображаться в разделе «Последние матчи».',
-  },
-  {
-    id: 'account',
-    question: 'Как создать аккаунт?',
-    answer: 'Нажмите «Регистрация» вверху страницы. Форма станет доступна после подключения авторизации.',
-  },
-  {
-    id: 'bans',
-    question: 'Где проверить список банов?',
-    answer: 'Откройте раздел «Баны», чтобы посмотреть блокировки на игровых серверах, найти игрока по нику или Steam ID и проверить срок бана.',
-  },
-]
+const faqItems = computed(() => websiteSettings.value.faq)
+const visibleServers = computed(() => servers.value.slice(0, websiteSettings.value.serversLimit))
+watch(faqItems, items => { if (!items.some(item => item.id === openFaqId.value)) openFaqId.value = items[0]?.id ?? null }, { immediate: true })
 
 const recentMatchSections = computed(() => [
-  { mode: 'Mix' as const, matches: mixMatches.value },
-  { mode: 'War' as const, matches: warMatches.value },
+  { mode: 'Mix' as const, matches: mixMatches.value, enabled: websiteSettings.value.mixMatchesLimit > 0 },
+  { mode: 'War' as const, matches: warMatches.value, enabled: websiteSettings.value.warMatchesLimit > 0 },
 ])
 
 const apiMessage = computed(() => {
@@ -73,7 +55,7 @@ const apiMessage = computed(() => {
   if (apiState.value === 'offline') return 'Не удалось загрузить данные. Попробуйте обновить страницу.'
   return servers.value.length
     ? 'Серверы сообщества доступны для подключения.'
-    : 'Игровые данные появятся после подключения серверов к MatchStrike.'
+    : 'Игровые данные появятся после подключения серверов к ' + websiteSettings.value.name + '.'
 })
 
 function toggleFaq(id: string) {
@@ -99,12 +81,12 @@ async function loadRecentMatches() {
 
   try {
     const [war, mix] = await Promise.all([
-      getGameMatches('War'),
-      getGameMatches('Mix'),
+      getGameMatches('War', 1, Math.max(1, websiteSettings.value.warMatchesLimit)),
+      getGameMatches('Mix', 1, Math.max(1, websiteSettings.value.mixMatchesLimit)),
     ])
 
-    warMatches.value = war.matches.slice(0, 5)
-    mixMatches.value = mix.matches.slice(0, 5)
+    warMatches.value = war.matches.slice(0, websiteSettings.value.warMatchesLimit)
+    mixMatches.value = mix.matches.slice(0, websiteSettings.value.mixMatchesLimit)
     finishedMatchesCount.value = war.finishedMatches
   } catch (requestError) {
     matchesError.value = requestError instanceof Error
@@ -152,8 +134,8 @@ onMounted(async () => {
     <section class="welcome-section" aria-labelledby="page-title">
       <div class="welcome-copy">
         <div class="eyebrow"><span class="eyebrow-line"></span> COUNTER-STRIKE <span class="eyebrow-slash">/</span> COMMUNITY</div>
-        <h1 id="page-title">Match<span>Strike</span></h1>
-        <p>Матчи сообщества, игровые серверы и статистика игроков — в одном месте.</p>
+        <h1 id="page-title"><template v-if="websiteSettings.name === 'MatchStrike'">Match<span>Strike</span></template><template v-else>{{ websiteSettings.name }}</template></h1>
+        <p>{{ websiteSettings.description }}</p>
       </div>
       <div class="welcome-stamp" aria-hidden="true">
         <span class="stamp-top">PLAY TOGETHER</span>
@@ -162,7 +144,7 @@ onMounted(async () => {
       </div>
     </section>
 
-    <div class="overview-grid">
+    <div class="overview-grid" :class="{ 'has-no-faq': !faqItems.length }">
       <section id="match-stats" class="section-panel stats-panel" aria-labelledby="stats-title">
         <div class="panel-heading">
           <div><div class="section-kicker">ВАША ФОРМА</div><h2 id="stats-title">Статистика матчей</h2></div>
@@ -179,7 +161,7 @@ onMounted(async () => {
         <p class="panel-note"><span class="note-mark"></span>{{ apiMessage }}</p>
       </section>
 
-      <section id="faq" class="section-panel faq-panel" aria-labelledby="faq-title">
+      <section v-if="faqItems.length" id="faq" class="section-panel faq-panel" aria-labelledby="faq-title">
         <div class="panel-heading">
           <div><div class="section-kicker">ОТВЕТЫ НА ВОПРОСЫ</div><h2 id="faq-title">FAQ</h2></div>
           <span class="panel-index">04</span>
@@ -196,7 +178,7 @@ onMounted(async () => {
       </section>
     </div>
 
-    <section id="servers" class="content-section" aria-labelledby="servers-title">
+    <section v-if="websiteSettings.serversLimit > 0" id="servers" class="content-section" aria-labelledby="servers-title">
       <div class="section-heading">
         <div><div class="section-kicker">ПОДКЛЮЧАЙСЯ К ИГРЕ</div><h2 id="servers-title">Игровые серверы</h2></div>
         <span class="section-count">{{ servers.length.toString().padStart(2, '0') }} <span>СЕРВЕРОВ</span></span>
@@ -210,7 +192,7 @@ onMounted(async () => {
         <div><strong>Список серверов недоступен</strong><span>{{ serversError }}</span></div>
       </div>
       <div v-else-if="servers.length" class="server-list">
-          <article v-for="(server, index) in servers" :key="server.id" class="server-row" :class="{ 'has-query-data': server.playersOnline !== null }">
+          <article v-for="(server, index) in visibleServers" :key="server.id" class="server-row" :class="{ 'has-query-data': server.playersOnline !== null }">
           <span class="server-number">0{{ index + 1 }}</span>
           <span class="server-game-icon"><Gamepad2 :size="19" /></span>
           <div class="server-main"><h3>{{ server.name }}</h3><span>{{ server.lobbyOnly ? 'Только лобби' : server.mode }} <i></i> {{ server.map || 'Карта не получена' }}</span></div>
@@ -221,14 +203,14 @@ onMounted(async () => {
       </div>
       <div v-else class="empty-state section-empty">
         <span class="empty-icon"><Gamepad2 :size="23" :stroke-width="1.5" /></span>
-        <div><strong>Серверы ещё не подключены</strong><span>Когда игровые серверы появятся в MatchStrike, здесь будут режимы, карты и онлайн.</span></div>
+        <div><strong>Серверы ещё не подключены</strong><span>Когда игровые серверы появятся в {{ websiteSettings.name }}, здесь будут режимы, карты и онлайн.</span></div>
       </div>
     </section>
 
-    <section id="last-matches" class="content-section matches-section" aria-labelledby="matches-title">
+    <section v-if="websiteSettings.mixMatchesLimit > 0 || websiteSettings.warMatchesLimit > 0" id="last-matches" class="content-section matches-section" aria-labelledby="matches-title">
       <div class="section-heading">
         <div><div class="section-kicker">ИСТОРИЯ ИГР</div><h2 id="matches-title">Последние матчи</h2></div>
-        <span class="section-count">2 <span>РЕЖИМА</span></span>
+        <span class="section-count">{{ recentMatchSections.filter(group => group.enabled).length }} <span>РЕЖИМА</span></span>
       </div>
 
       <div v-if="matchesLoading" class="empty-state section-empty">
@@ -240,8 +222,8 @@ onMounted(async () => {
         <div><strong>Не удалось загрузить матчи</strong><span>{{ matchesError }}</span></div>
         <button class="friend-action" type="button" @click="loadRecentMatches">Повторить</button>
       </div>
-      <div v-else class="home-recent-matches">
-        <section v-for="group in recentMatchSections" :key="group.mode" class="home-match-column" :aria-label="group.mode + ' матчи'">
+      <div v-else class="home-recent-matches" :class="{ 'has-one-mode': recentMatchSections.filter(group => group.enabled).length === 1 }">
+        <section v-for="group in recentMatchSections.filter(group => group.enabled)" :key="group.mode" class="home-match-column" :aria-label="group.mode + ' матчи'">
           <div class="donut-group-heading">
             <Swords v-if="group.mode === 'War'" :size="17" />
             <Users v-else :size="17" />

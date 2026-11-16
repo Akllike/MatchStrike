@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import SiteAlert from './components/SiteAlert.vue'
+import { websiteSettings } from './websiteSettings'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ArrowLeft, Clock3, Crosshair, Map as MapIcon, Radio, Server, Shield, Swords, Trophy, Users } from '@lucide/vue'
@@ -200,6 +202,8 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <SiteAlert :message="refreshError" title="Не удалось обновить матч" @close="refreshError = ''" />
+
   <div class="match-detail-page">
     <RouterLink class="donut-back match-detail-back" :to="{ name: 'matches-mode', params: { mode: match?.mode === 'War' ? 'war' : 'mix' } }"><ArrowLeft :size="15" /> Все матчи</RouterLink>
     <Transition name="profile-content" mode="out-in">
@@ -207,7 +211,7 @@ onUnmounted(() => {
     <div v-else-if="error" key="error" class="admin-error" role="alert"><strong>Не удалось загрузить матч</strong><span>{{ error }}</span><button class="friend-action" type="button" @click="load()">Повторить</button></div>
     <div v-else-if="match" :key="match.id">
       <header class="match-detail-heading">
-        <div><div class="section-kicker">MATCHSTRIKE / MATCH #{{ match.id }}</div><h1>Матч <span>#{{ match.id }}</span></h1><p>Обзор игры, составы и результаты</p></div>
+        <div><div class="section-kicker">{{ websiteSettings.name.toUpperCase() }} / MATCH #{{ match.id }}</div><h1>Матч <span>#{{ match.id }}</span></h1><p>Обзор игры, составы и результаты</p></div>
         <span class="donut-status" :class="`is-${match.status}`">{{ { live: 'Live', finished: 'Завершён', preparing: 'Подготовка', cancelled: 'Отменён' }[match.status] }}</span>
       </header>
 
@@ -234,8 +238,8 @@ onUnmounted(() => {
 
       <div class="match-update-status" role="status">
         <Radio :size="14" />
-        <span v-if="refreshError">Не удалось обновить данные: {{ refreshError }}</span>
-        <span v-else-if="connection === 'connected'">Обновление в реальном времени</span>
+
+        <span v-if="connection === 'connected'">Обновление в реальном времени</span>
         <span v-else-if="connection === 'unconfigured'">WebSocket не настроен · обновляем каждые 5 секунд</span>
         <span v-else>Связь с WebSocket восстанавливается · обновляем каждые 5 секунд</span>
         <time :datetime="match.updatedAt">Последние данные: {{ new Date(match.updatedAt).toLocaleString('ru-RU') }}</time>

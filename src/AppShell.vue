@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import SiteAlert from './components/SiteAlert.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { websiteSettings } from './websiteSettings'
 import { useRoute, useRouter } from 'vue-router'
 import { useRegisterSW } from 'virtual:pwa-register/vue'
 import {
@@ -28,6 +30,7 @@ import {
 import { ApiRequestError, clearAppNotifications, getAppNotifications, getCurrentUser, getNotificationSettings, loginAccount, logoutAccount, markAllAppNotificationsRead, markAppNotificationRead, registerAccount, savePushSubscription } from './api'
 import BrandMark from './components/BrandMark.vue'
 import HeaderFriends from './components/HeaderFriends.vue'
+import AdminSubnav from './components/AdminSubnav.vue'
 import type { AppNotification, AuthUser, LoginPayload, NotificationSettings, RegisterPayload } from './api'
 import { adminLandingPath } from './adminAccess'
 
@@ -52,6 +55,8 @@ let themeTransitionPending = false
 let themeTransitionTimer: number | undefined
 const authMode = ref<AuthMode>(null)
 const currentUser = ref<Account | null>(null)
+const authReady = ref(false)
+const isLandingLayout = computed(() => route.name === 'home' && !currentUser.value)
 const sidebarCollapsed = ref(false)
 const mobileMenuOpen = ref(false)
 const mobileMenuToggle = ref<HTMLButtonElement | null>(null)
@@ -76,7 +81,6 @@ const pushPromptVisible = ref(false)
 const pushPromptBusy = ref(false)
 const pushFollowupMessage = ref('')
 const pushPromptSettings = ref<NotificationSettings | null>(null)
-let pushFollowupTimer: number | undefined
 const authBusy = ref(false)
 const authMessage = ref('')
 const authErrors = ref<Record<string, string[]>>({})
@@ -304,22 +308,9 @@ function rememberPushPromptDismissed(userId: number) {
   }
 }
 
-function showPushFollowup(message: string) {
-  pushFollowupMessage.value = message
-  if (pushFollowupTimer !== undefined) window.clearTimeout(pushFollowupTimer)
-  pushFollowupTimer = window.setTimeout(() => {
-    pushFollowupMessage.value = ''
-    pushFollowupTimer = undefined
-  }, 6500)
-}
+function showPushFollowup(message: string) { pushFollowupMessage.value = message }
 
-function closePushFollowup() {
-  pushFollowupMessage.value = ''
-  if (pushFollowupTimer !== undefined) {
-    window.clearTimeout(pushFollowupTimer)
-    pushFollowupTimer = undefined
-  }
-}
+function closePushFollowup() { pushFollowupMessage.value = '' }
 
 async function checkPushPrompt(userId: number) {
   pushPromptVisible.value = false
@@ -433,7 +424,8 @@ const navigation = [
   { id: 'stats', label: 'Статистика', to: '/stats', icon: Activity },
   { id: 'bans', label: 'Баны', to: '/bans', icon: Ban },
 ]
-const visibleNavigation = computed(() => navigation.filter(item => item.id !== 'lobby' || currentUser.value !== null))
+const visibleNavigation = computed(() => navigation.filter(item => item.id !== 'lobby' || (currentUser.value !== null && websiteSettings.value.lobbyEnabled)))
+const isAdminWorkspace = computed(() => route.matched.some(record => record.meta.requiresAdmin))
 
 const profileLink = computed(() => currentUser.value
   ? `/profile/${encodeURIComponent(currentUser.value.nickname)}`
@@ -448,7 +440,7 @@ const authTitle = computed(() => {
   if (authMode.value === 'help') return 'Помощь'
   if (authMode.value === 'privacy') return 'Политика конфиденциальности'
   if (authMode.value === 'required') return 'Вы не авторизованы'
-  return 'Войти в MatchStrike'
+  return 'Войти в ' + websiteSettings.value.name
 })
 
 const authDescription = computed(() => {
@@ -476,6 +468,9 @@ function updateCurrentUser(user: AuthUser) {
 }
 
 const pageEventListeners = computed(() => {
+  if (route.name === 'home') {
+    return { authRequested:(mode:'login'|'register') => openAuth(mode), themeRequested:toggleTheme }
+  }
   if (route.name === 'profile') {
     return {
       accountUpdated: updateCurrentUser,
@@ -745,6 +740,8 @@ onMounted(async () => {
     }
   } catch {
     currentUser.value = null
+  } finally {
+    authReady.value = true
   }
 })
 
@@ -760,16 +757,19 @@ onBeforeUnmount(() => {
     window.removeEventListener(eventName, refreshSessionOnActivity)
   }
   if (notificationsPollTimer !== undefined) window.clearInterval(notificationsPollTimer)
-  if (pushFollowupTimer !== undefined) window.clearTimeout(pushFollowupTimer)
 })
 </script>
 
 <template>
-  <div id="top" class="site-shell" :class="{ 'is-sidebar-collapsed': sidebarCollapsed, 'is-mobile-menu-open': mobileMenuOpen }">
+  <SiteAlert :message="pushFollowupMessage" tone="warning" title="Уведомления" @close="closePushFollowup" />
+  <SiteAlert :message="notificationsError" @close="notificationsError = ''" />
+  <SiteAlert :message="authMessage" tone="error" @close="authMessage = ''" />
+
+  <div id="top" class="site-shell" :class="{ 'is-sidebar-collapsed': sidebarCollapsed, 'is-mobile-menu-open': mobileMenuOpen, 'is-landing':isLandingLayout }">
     <Transition name="push-onboarding">
       <aside v-if="needRefresh" class="push-onboarding-alert pwa-update-alert" role="status" aria-live="polite">
         <span class="push-onboarding-icon"><RefreshCw :size="17" /></span>
-        <span class="push-onboarding-copy"><strong>Доступно обновление</strong><span>Новая версия MatchStrike готова. Обновить страницу сейчас?</span></span>
+        <span class="push-onboarding-copy"><strong>Доступно обновление</strong><span>Новая версия {{ websiteSettings.name }} готова. Обновить страницу сейчас?</span></span>
         <span class="push-onboarding-actions">
           <button type="button" class="push-onboarding-enable" :disabled="pwaUpdateBusy" @click="applyPwaUpdate">{{ pwaUpdateBusy ? 'Обновляем…' : 'Обновить' }}</button>
           <button type="button" class="push-onboarding-later" :disabled="pwaUpdateBusy" @click="dismissPwaUpdate">Позже</button>
@@ -784,19 +784,13 @@ onBeforeUnmount(() => {
         </span>
       </aside>
     </Transition>
-    <Transition name="push-onboarding">
-      <div v-if="pushFollowupMessage && !needRefresh && !pushPromptVisible" class="push-onboarding-alert push-onboarding-followup" role="status" aria-live="polite">
-        <span class="push-onboarding-icon"><Bell :size="17" /></span>
-        <span class="push-onboarding-copy"><strong>Уведомления</strong><span>{{ pushFollowupMessage }}</span></span>
-        <button class="push-onboarding-close" type="button" aria-label="Закрыть сообщение" @click="closePushFollowup"><X :size="16" /></button>
-      </div>
-    </Transition>
+
     <button v-if="mobileMenuOpen" class="mobile-menu-backdrop" type="button" tabindex="-1" aria-label="Закрыть меню" @click="closeMobileMenu()"></button>
-    <aside id="site-sidebar" ref="sidebar" class="sidebar" :role="mobileMenuOpen ? 'dialog' : undefined" :aria-modal="mobileMenuOpen ? 'true' : undefined" :aria-label="mobileMenuOpen ? 'Навигация' : undefined">
+    <aside v-if="!isLandingLayout" id="site-sidebar" ref="sidebar" class="sidebar" :role="mobileMenuOpen ? 'dialog' : undefined" :aria-modal="mobileMenuOpen ? 'true' : undefined" :aria-label="mobileMenuOpen ? 'Навигация' : undefined">
       <div class="sidebar-brand">
-        <RouterLink class="brand" to="/" aria-label="MatchStrike — главная" @click="closeMobileMenu(false)">
+        <RouterLink class="brand" to="/" :aria-label="`${websiteSettings.name} — главная`" @click="closeMobileMenu(false)">
           <BrandMark />
-          <span class="brand-name">MATCH<span>STRIKE</span><small>CS COMMUNITY</small></span>
+          <span class="brand-name"><template v-if="websiteSettings.name==='MatchStrike'">MATCH<span>STRIKE</span></template><template v-else>{{ websiteSettings.name }}</template><small>{{ websiteSettings.tagline }}</small></span>
         </RouterLink>
         <button
           class="sidebar-collapse-toggle"
@@ -813,8 +807,9 @@ onBeforeUnmount(() => {
         <button ref="mobileMenuClose" class="mobile-menu-close" type="button" aria-label="Закрыть меню" v-tooltip="'Закрыть меню'" @click="closeMobileMenu()"><X :size="20" /></button>
       </div>
 
-      <div class="sidebar-caption">СООБЩЕСТВО</div>
-      <nav id="primary-navigation" class="main-nav" aria-label="Основная навигация">
+      <div class="sidebar-caption">{{ isAdminWorkspace ? 'УПРАВЛЕНИЕ' : 'СООБЩЕСТВО' }}</div>
+      <AdminSubnav v-if="isAdminWorkspace" :role="currentUser?.adminRole ?? null" :collapsed="sidebarCollapsed" @navigate="closeMobileMenu(false)" />
+      <nav v-else id="primary-navigation" class="main-nav" aria-label="Основная навигация">
         <RouterLink
           v-for="item in visibleNavigation"
           :key="item.id"
@@ -832,7 +827,7 @@ onBeforeUnmount(() => {
         </RouterLink>
       </nav>
 
-      <nav v-if="currentUser?.adminRole" class="admin-nav" aria-label="Администрирование">
+      <nav v-if="currentUser?.adminRole && !isAdminWorkspace" class="admin-nav" aria-label="Администрирование">
         <RouterLink
           :to="adminPanelLink"
           class="nav-link"
@@ -852,15 +847,15 @@ onBeforeUnmount(() => {
           <span class="help-label">Помощь</span>
           <ArrowUpRight class="help-arrow" :size="14" />
         </button>
-        <div class="sidebar-version" aria-label="MatchStrike CS"><span class="version-dot"></span><span class="sidebar-version-label">MATCHSTRIKE / CS</span></div>
+        <div class="sidebar-version" :aria-label="websiteSettings.name"><span class="version-dot"></span><span class="sidebar-version-label">{{ websiteSettings.name }} / CS</span></div>
       </div>
     </aside>
 
     <main class="main-content">
-      <header class="topbar">
+      <header v-if="!isLandingLayout" class="topbar">
         <div class="mobile-header">
           <button ref="mobileMenuToggle" class="mobile-menu-toggle" type="button" :aria-expanded="mobileMenuOpen" aria-controls="site-sidebar" aria-label="Открыть меню" v-tooltip="'Открыть меню'" @click="openMobileMenu"><Menu :size="21" /></button>
-          <RouterLink class="mobile-header-brand" to="/" aria-label="MatchStrike — главная"><BrandMark /></RouterLink>
+          <RouterLink class="mobile-header-brand" to="/" :aria-label="`${websiteSettings.name} — главная`"><BrandMark /></RouterLink>
         </div>
         <div class="topbar-label"><span class="topbar-mark"></span> ИГРОВОЕ СООБЩЕСТВО <span class="topbar-divider">/</span> CS</div>
         <div class="topbar-actions">
@@ -903,7 +898,7 @@ onBeforeUnmount(() => {
               <section v-if="notificationsOpen" class="notifications-panel" role="dialog" aria-label="Уведомления">
                 <header class="notifications-panel-heading"><h2>Уведомления</h2><span class="notifications-heading-actions"><button v-if="unreadNotificationCount > 0" type="button" @click="markAllNotificationsRead">Прочитать все</button><button v-if="notifications.length" class="notifications-clear-button" type="button" aria-label="Очистить уведомления" v-tooltip="'Очистить уведомления'" :disabled="notificationsClearBusy" @click="clearNotifications"><X :size="15" /></button></span></header>
                 <p v-if="notificationsLoading && !notifications.length" class="notifications-panel-message">Загружаем уведомления…</p>
-                <p v-else-if="notificationsError" class="notifications-panel-message" role="alert">{{ notificationsError }}</p>
+                <p v-else-if="notificationsError" class="notifications-panel-message" role="alert">Список уведомлений недоступен.</p>
                 <div v-else-if="notifications.length" class="notifications-list">
                   <RouterLink v-for="notification in notifications" :key="notification.id" class="notification-item" :class="{ 'is-unread': !notification.isRead }" :to="notification.link || (notification.data.broadcast === true ? '/' : '/friends')" @click="openNotification(notification)">
                     <span class="notification-item-copy"><small v-if="typeof notification.data.sender === 'string'" class="notification-item-sender">От {{ notification.data.sender }}</small><strong>{{ notification.title }}</strong><span>{{ notification.message }}</span></span>
@@ -932,14 +927,14 @@ onBeforeUnmount(() => {
       <div class="page-content">
         <RouterView v-slot="{ Component, route: pageRoute }">
           <Transition name="route" mode="out-in" appear>
-            <div :key="pageRoute.name === 'tickets' || pageRoute.name === 'lobby' ? pageRoute.path : pageRoute.fullPath" class="route-page">
-              <component :is="Component" v-on="pageEventListeners" />
+            <div :key="pageRoute.name === 'adminpanel' || pageRoute.name === 'adminpanel-section' ? 'admin-workspace' : pageRoute.name === 'tickets' || pageRoute.name === 'lobby' ? pageRoute.path : pageRoute.fullPath" class="route-page">
+              <component :is="Component" v-bind="pageRoute.name === 'home' ? {authReady,authenticated:!!currentUser,darkTheme} : {}" v-on="pageEventListeners" />
             </div>
           </Transition>
         </RouterView>
-        <footer class="page-footer">
-          <span>© {{ new Date().getFullYear() }} MATCHSTRIKE</span>
-          <span><i></i> COUNTER-STRIKE COMMUNITY</span>
+        <footer v-if="!isLandingLayout" class="page-footer">
+          <span>© {{ new Date().getFullYear() }} {{ websiteSettings.name }}</span>
+          <span><i></i> {{ websiteSettings.tagline }}</span>
         </footer>
       </div>
     </main>
@@ -950,7 +945,7 @@ onBeforeUnmount(() => {
           <section class="info-dialog" :class="{ 'auth-two-factor-dialog': authMode === 'login' && twoFactorRequired }" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
           <button v-if="authMode === 'login' && twoFactorRequired" class="dialog-close auth-step-back" type="button" aria-label="Назад к email и паролю" v-tooltip="'Назад к email и паролю'" @click="backToCredentials"><ArrowLeft :size="18" /></button>
           <button class="dialog-close" type="button" aria-label="Закрыть" @click="closeDialog()"><X :size="18" /></button>
-          <div class="section-kicker">MATCHSTRIKE / ACCOUNT</div>
+          <div class="section-kicker">{{ websiteSettings.name.toUpperCase() }} / ACCOUNT</div>
           <h2 id="dialog-title">{{ authTitle }}</h2>
           <p v-if="authMode === 'help'">{{ authDescription }}</p>
           <div v-else-if="authMode === 'required'" class="auth-required">
@@ -961,7 +956,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <div v-else-if="authMode === 'privacy'" class="privacy-copy">
-            <p>Для работы аккаунта MatchStrike сохраняет email и никнейм. Пароль хранится только в виде криптографического хеша, а дата согласия с политикой — в записи аккаунта.</p>
+            <p>Для работы аккаунта {{ websiteSettings.name }} сохраняет email и никнейм. Пароль хранится только в виде криптографического хеша, а дата согласия с политикой — в записи аккаунта.</p>
             <p>Эти данные используются для входа и работы функций сообщества. Перед публичным запуском владелец сайта должен дополнить политику своими реквизитами, контактами для запросов и правилами хранения данных.</p>
             <div class="dialog-actions"><button class="dialog-secondary" type="button" @click="authMode = 'register'">Назад к регистрации</button></div>
           </div>
@@ -1026,7 +1021,7 @@ onBeforeUnmount(() => {
               </div>
             </Transition>
 
-            <p v-if="authMessage" class="auth-message" role="alert">{{ authMessage }}</p>
+
 
             <div class="dialog-actions">
               <button class="dialog-secondary" type="button" @click="closeDialog()">Отмена</button>

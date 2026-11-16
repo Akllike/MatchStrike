@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { websiteSettings } from './websiteSettings'
 import { CircleHelp } from '@lucide/vue'
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -24,7 +25,7 @@ function updateSelectedTicket(id: number | null) {
 <template>
   <section class="welcome-section route-intro" aria-labelledby="tickets-page-title">
     <div class="welcome-copy">
-      <div class="eyebrow"><span class="eyebrow-line"></span> MATCHSTRIKE <span class="eyebrow-slash">/</span> SUPPORT</div>
+      <div class="eyebrow"><span class="eyebrow-line"></span> {{ websiteSettings.name.toUpperCase() }} <span class="eyebrow-slash">/</span> SUPPORT</div>
       <h1 id="tickets-page-title">Мои <span>тикеты</span></h1>
     </div>
     <div class="route-intro-mark"><CircleHelp :size="27" :stroke-width="1.5" /></div>
