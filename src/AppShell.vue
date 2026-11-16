@@ -48,6 +48,8 @@ const router = useRouter()
 const { needRefresh, updateServiceWorker } = useRegisterSW({ immediate: true })
 const pwaUpdateBusy = ref(false)
 const darkTheme = ref(document.documentElement.classList.contains('dark'))
+let themeTransitionPending = false
+let themeTransitionTimer: number | undefined
 const authMode = ref<AuthMode>(null)
 const currentUser = ref<Account | null>(null)
 const sidebarCollapsed = ref(false)
@@ -110,14 +112,36 @@ function dismissPwaUpdate() {
   needRefresh.value = false
 }
 
-function toggleTheme() {
-  darkTheme.value = !darkTheme.value
-  document.documentElement.classList.toggle('dark', darkTheme.value)
-  try {
-    localStorage.setItem('matchstrike.theme', darkTheme.value ? 'dark' : 'light')
-  } catch {
+async function toggleTheme() {
+  if (themeTransitionPending) return
+  const nextDarkTheme = !darkTheme.value
+  const applyTheme = async () => {
+    darkTheme.value = nextDarkTheme
+    document.documentElement.classList.toggle('dark', nextDarkTheme)
+    try {
+      localStorage.setItem('matchstrike.theme', nextDarkTheme ? 'dark' : 'light')
+    } catch { /* The theme still switches when browser storage is unavailable. */ }
+    await nextTick()
+  }
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    await applyTheme()
     return
   }
+  if (typeof document.startViewTransition === 'function') {
+    themeTransitionPending = true
+    try {
+      await document.startViewTransition(applyTheme).finished
+    } catch { /* A skipped visual transition still applies the selected theme. */ }
+    finally { themeTransitionPending = false }
+    return
+  }
+  // Older browsers fade individual surfaces instead of a snapshot of the page.
+  const root = document.documentElement
+  root.classList.add('is-theme-changing')
+  void getComputedStyle(root).color
+  await applyTheme()
+  if (themeTransitionTimer !== undefined) window.clearTimeout(themeTransitionTimer)
+  themeTransitionTimer = window.setTimeout(() => root.classList.remove('is-theme-changing'), 400)
 }
 
 function sidebarPreferenceKey(userId: number | null): string {
@@ -409,6 +433,7 @@ const navigation = [
   { id: 'stats', label: 'Статистика', to: '/stats', icon: Activity },
   { id: 'bans', label: 'Баны', to: '/bans', icon: Ban },
 ]
+const visibleNavigation = computed(() => navigation.filter(item => item.id !== 'lobby' || currentUser.value !== null))
 
 const profileLink = computed(() => currentUser.value
   ? `/profile/${encodeURIComponent(currentUser.value.nickname)}`
@@ -724,6 +749,8 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  if (themeTransitionTimer !== undefined) window.clearTimeout(themeTransitionTimer)
+  document.documentElement.classList.remove('is-theme-changing')
   document.removeEventListener('pointerdown', closeProfileMenuOnOutsideClick)
   window.removeEventListener('keydown', closeHeaderPopoversOnEscape)
   window.removeEventListener('keydown', handleMobileMenuKeydown)
@@ -789,7 +816,7 @@ onBeforeUnmount(() => {
       <div class="sidebar-caption">СООБЩЕСТВО</div>
       <nav id="primary-navigation" class="main-nav" aria-label="Основная навигация">
         <RouterLink
-          v-for="item in navigation"
+          v-for="item in visibleNavigation"
           :key="item.id"
           :to="item.to"
           class="nav-link"
@@ -838,15 +865,15 @@ onBeforeUnmount(() => {
         <div class="topbar-label"><span class="topbar-mark"></span> ИГРОВОЕ СООБЩЕСТВО <span class="topbar-divider">/</span> CS</div>
         <div class="topbar-actions">
           <button
-            class="theme-toggle flex h-9 w-9 cursor-pointer items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-sky-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+            class="theme-toggle"
             type="button"
             :aria-label="darkTheme ? 'Включить светлую тему' : 'Включить тёмную тему'"
             v-tooltip="darkTheme ? 'Включить светлую тему' : 'Включить тёмную тему'"
             :aria-pressed="darkTheme"
             @click="toggleTheme"
           >
-            <Sun v-if="darkTheme" :size="17" />
-            <Moon v-else :size="17" />
+            <Sun v-if="darkTheme" :size="15" />
+            <Moon v-else :size="15" />
           </button>
           <template v-if="!currentUser">
             <button class="login-button" type="button" @click="openAuth('login')"><LogIn :size="16" /><span>Войти</span></button>
@@ -905,7 +932,7 @@ onBeforeUnmount(() => {
       <div class="page-content">
         <RouterView v-slot="{ Component, route: pageRoute }">
           <Transition name="route" mode="out-in" appear>
-            <div :key="pageRoute.name === 'tickets' ? pageRoute.path : pageRoute.fullPath" class="route-page">
+            <div :key="pageRoute.name === 'tickets' || pageRoute.name === 'lobby' ? pageRoute.path : pageRoute.fullPath" class="route-page">
               <component :is="Component" v-on="pageEventListeners" />
             </div>
           </Transition>

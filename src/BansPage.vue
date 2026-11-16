@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { Ban, LoaderCircle, RefreshCw, UserRound } from '@lucide/vue'
+import { Ban, LoaderCircle, UserRound } from '@lucide/vue'
 import { getBans } from './api'
 import type { BanStatusFilter, SourceBan } from './api'
 import PageLoader from './components/PageLoader.vue'
@@ -104,7 +104,6 @@ onUnmounted(() => {
 
     <div class="bans-toolbar">
       <SearchField v-model="search" :maxlength="100" label="Поиск по банам" placeholder="Никнейм, Steam ID или причина" />
-      <button class="admin-server-icon-button bans-refresh" type="button" :disabled="loading" aria-label="Обновить список банов" v-tooltip="'Обновить список'" @click="load()"><RefreshCw :size="15" :class="{ 'is-spinning': loading }" /></button>
     </div>
 
     <div class="bans-filter-tabs" role="group" aria-label="Фильтр банов">
@@ -125,7 +124,7 @@ onUnmounted(() => {
       </div>
       <div v-else-if="bans.length" key="list" class="bans-table-wrap">
         <table class="bans-table">
-          <thead><tr><th>Игрок</th><th>Причина</th><th>Дата бана</th><th>Окончание</th><th>Статус</th></tr></thead>
+          <thead><tr><th scope="col">Игрок</th><th scope="col">Причина</th><th scope="col">Дата бана</th><th scope="col">Окончание</th><th scope="col">Статус</th></tr></thead>
           <tbody>
             <tr v-for="ban in bans" :key="`${ban.serverId}-${ban.id}`">
               <td class="bans-player-cell">

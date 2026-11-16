@@ -4,6 +4,8 @@ import { useRoute } from 'vue-router'
 import { Activity, CalendarDays, Check, ChevronRight, Film, Flag, LoaderCircle, Share2, Swords, Target, Trophy, Upload, UserPlus, UserRound, UserRoundMinus, Users, X } from '@lucide/vue'
 import PageLoader from './components/PageLoader.vue'
 import ProfileMatchList from './components/ProfileMatchList.vue'
+import ProfileMapWinRates from './components/ProfileMapWinRates.vue'
+import RatingSparkles from './components/RatingSparkles.vue'
 import AdvancedPerformance from './components/AdvancedPerformance.vue'
 import PlayerWeapons from './components/PlayerWeapons.vue'
 import { socialIdFromValue, socialProfileUrl } from './socialLinks'
@@ -17,6 +19,7 @@ const emit = defineEmits<{
 
 const route = useRoute()
 const profile = ref<PlayerProfile | null>(null)
+const ratingTrophy = ref<HTMLElement | null>(null)
 type StatsSection = 'overview' | 'advanced' | 'weapons' | 'clutches'
 const statsSections: { id: StatsSection; label: string; icon: typeof Activity }[] = [
   { id: 'overview', label: 'Обзор', icon: Activity },
@@ -901,24 +904,6 @@ watch(nickname, loadProfile, { immediate: true })
       <ProfileMatchList :matches="recentProfileMatches" :mode="profileMatchMode" />
     </section>
 
-    <section class="profile-section" aria-labelledby="map-winrate-title">
-      <div class="section-heading">
-        <div><div class="section-kicker">MAP PERFORMANCE</div><h2 id="map-winrate-title">Винрейт по картам</h2></div>
-        <span class="section-count">{{ profile.mapWinRates.length.toString().padStart(2, '0') }} <span>КАРТ</span></span>
-      </div>
-      <div v-if="profile.mapWinRates.length" class="map-winrate-list">
-        <article v-for="map in profile.mapWinRates" :key="map.map" class="map-winrate-row">
-          <strong>{{ map.map }}</strong>
-          <div class="map-winrate-track"><span :style="{ width: `${map.winRate}%` }"></span></div>
-          <span class="map-winrate-value">{{ map.winRate }}%</span>
-          <small>{{ map.wins }} / {{ map.matches }} побед</small>
-        </article>
-      </div>
-      <div v-else class="empty-state section-empty map-winrate-empty">
-        <span class="empty-icon"><Target :size="21" /></span>
-        <div><strong>Нет данных по картам</strong><span>Винрейт появится после завершённых матчей.</span></div>
-      </div>
-    </section>
     </div>
 
     <section
@@ -938,11 +923,14 @@ watch(nickname, loadProfile, { immediate: true })
         <button v-for="section in statsSections" :key="section.id" class="profile-stats-nav-button" :class="{ 'is-active': activeStatsSection === section.id }" type="button" :aria-pressed="activeStatsSection === section.id" @click="activeStatsSection = section.id"><component :is="section.icon" :size="14" /><span>{{ section.label }}</span></button>
       </nav>
 
+      <Transition name="profile-stats-content" mode="out-in">
+      <div :key="activeStatsSection" class="profile-stats-content" :data-stats-section="activeStatsSection">
       <div v-if="activeStatsSection === 'overview'" class="profile-statistics-summary grid grid-cols-1 gap-3 xl:grid-cols-[minmax(250px,0.9fr)_minmax(0,2fr)]">
-        <section class="profile-rating-card relative overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-950 p-5 text-white shadow-xl" aria-label="War рейтинг">
+        <section class="profile-rating-card isolate relative overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-950 p-5 text-white shadow-xl" aria-label="War рейтинг">
           <div class="pointer-events-none absolute -right-12 -top-14 h-44 w-44 rounded-full bg-amber-400/10 blur-3xl"></div>
-          <div class="relative flex h-full flex-col justify-between gap-7">
-            <div class="flex items-start justify-between gap-3"><div><div class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Competitive rating</div><div class="mt-1 text-sm font-semibold text-slate-200">War ELO</div></div><span class="rounded-lg border border-amber-300/20 bg-amber-300/10 p-2 text-amber-200"><Trophy :size="17" /></span></div>
+          <RatingSparkles :source="ratingTrophy" :level="profile.donutWarProfile?.elo != null ? profile.donutWarProfile.level ?? 0 : 0" />
+          <div class="relative z-10 flex h-full flex-col justify-between gap-7">
+            <div class="flex items-start justify-between gap-3"><div><div class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Competitive rating</div><div class="mt-1 text-sm font-semibold text-slate-200">War ELO</div></div><span ref="ratingTrophy" class="profile-rating-trophy rounded-lg border border-amber-300/20 p-2 text-amber-200"><Trophy :size="17" /></span></div>
             <div class="flex items-center gap-3">
               <img class="h-14 w-14" :class="{ 'drop-shadow-[0_0_16px_rgba(251,191,36,0.25)]': profile.donutWarProfile?.elo != null }" :src="`/icons/levels/level-${profile.donutWarProfile?.elo != null ? profile.donutWarProfile.level ?? 0 : 0}.svg`" :alt="profile.donutWarProfile?.elo != null && profile.donutWarProfile.level ? `Уровень ${profile.donutWarProfile.level}` : 'Unknown'" />
               <div><div class="font-mono text-4xl font-bold leading-none tracking-tight text-white">{{ profile.donutWarProfile?.elo ?? '—' }}</div><div class="mt-2 text-xs text-slate-400">{{ profile.donutWarProfile ? `Уровень ${profile.donutWarProfile.level || '—'} · ${profile.donutWarProfile.matches ?? 0} матчей` : 'Рейтинг появится после War-матчей' }}</div></div>
@@ -992,6 +980,8 @@ watch(nickname, loadProfile, { immediate: true })
         <p v-else class="profile-stats-empty-note">История появится после War-матчей с сохранённым рейтингом ELO.</p>
       </section>
 
+      <ProfileMapWinRates v-if="activeStatsSection === 'overview' && (profile.donutStats || profile.mapWinRates.length)" :maps="profile.mapWinRates" />
+
       <section v-if="activeStatsSection === 'overview' && statCategoryCards.length" class="mt-4" aria-label="Категории игры">
         <div class="mb-3 flex items-end justify-between"><div><div class="section-kicker">PLAYER MODEL</div><h3 class="text-sm font-bold text-slate-100">Сильные стороны</h3></div><span class="text-[9px] text-slate-500">нажмите, чтобы открыть метрики</span></div>
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
@@ -1035,25 +1025,9 @@ watch(nickname, loadProfile, { immediate: true })
         <span class="mx-auto grid h-11 w-11 place-items-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-300/10 dark:text-amber-200"><Activity :size="19" /></span>
         <h3 class="mt-3 text-sm font-bold text-slate-800 dark:text-slate-100">Матчевой статистики пока нет</h3><p class="mx-auto mt-1 max-w-md text-xs text-slate-500 dark:text-slate-400">Она появится после завершения матчей с DonutStats.</p>
       </section>
+      </div>
+      </Transition>
 
-      <section v-if="activeStatsSection === 'overview' && profile.mapWinRates.length" class="profile-section" aria-labelledby="profile-detail-maps-title">
-        <div class="section-heading">
-          <div><div class="section-kicker">MAP PERFORMANCE</div><h2 id="profile-detail-maps-title">Winrate по картам</h2></div>
-          <span class="section-count">{{ profile.mapWinRates.length.toString().padStart(2, '0') }} <span>КАРТ</span></span>
-        </div>
-        <div v-if="profile.mapWinRates.length" class="map-winrate-list">
-          <article v-for="map in profile.mapWinRates" :key="map.map" class="map-winrate-row">
-            <strong>{{ map.map }}</strong>
-            <div class="map-winrate-track"><span :style="{ width: `${map.winRate}%` }"></span></div>
-            <span class="map-winrate-value">{{ map.winRate }}%</span>
-            <small>{{ map.wins }} / {{ map.matches }} побед</small>
-          </article>
-        </div>
-        <div v-else class="empty-state section-empty map-winrate-empty">
-          <span class="empty-icon"><Target :size="21" /></span>
-          <div><strong>Нет данных по картам</strong><span>Винрейт появится после завершённых матчей.</span></div>
-        </div>
-      </section>
     </section>
 
     <section

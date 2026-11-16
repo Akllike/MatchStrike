@@ -354,6 +354,8 @@ export interface MapWinRate {
   map: string
   matches: number
   wins: number
+  losses: number
+  draws: number
   winRate: number
 }
 
