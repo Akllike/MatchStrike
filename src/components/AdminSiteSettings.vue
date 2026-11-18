@@ -9,7 +9,7 @@ import { applyWebsiteSettings } from '../websiteSettings'
 const props = defineProps<{ data: WebsiteSettings; statisticsSource: StatisticsSource }>()
 const draft = ref<WebsiteSettings>(JSON.parse(JSON.stringify(props.data)))
 const baseline = ref(JSON.stringify(draft.value))
-const tab = ref<'brand' | 'home' | 'faq' | 'statistics'>('brand')
+const tab = ref<'brand' | 'home' | 'faq' | 'statistics' | 'telegram'>('brand')
 const source = ref(props.statisticsSource)
 const sourceBusy = ref(false)
 const busy = ref(false)
@@ -17,7 +17,7 @@ const mediaBusy = ref(false)
 const error = ref('')
 const success = ref('')
 const dirty = computed(() => JSON.stringify(draft.value) !== baseline.value)
-const tabs = [{ id:'brand' as const,label:'Оформление',icon:Palette },{ id:'home' as const,label:'Главная и разделы',icon:Gamepad2 },{ id:'faq' as const,label:'Вопросы и ответы',icon:CircleHelp },{ id:'statistics' as const,label:'Статистика',icon:Activity }]
+const tabs = [{ id:'brand' as const,label:'Оформление',icon:Palette },{ id:'home' as const,label:'Главная и разделы',icon:Gamepad2 },{ id:'faq' as const,label:'Вопросы и ответы',icon:CircleHelp },{ id:'statistics' as const,label:'Статистика',icon:Activity },{ id:'telegram' as const,label:'Telegram',icon:Settings }]
 const counts = [{ key:'serversLimit' as const,label:'Игровые серверы',max:50 },{ key:'mixMatchesLimit' as const,label:'Mix-матчи',max:30 },{ key:'warMatchesLimit' as const,label:'War-матчи',max:30 }]
 async function save(event: Event) {
   if (busy.value || mediaBusy.value || sourceBusy.value) return
@@ -96,6 +96,24 @@ function move(index: number, direction: number) {
         <article class="admin-board admin-settings-card"><header class="admin-board-heading"><div><span class="section-kicker">ВИЗУАЛЬНЫЙ СТИЛЬ</span><h2>Логотип сайта</h2></div><Image :size="19" /></header><div class="admin-settings-card-body"><p class="admin-muted-note">Отдельные изображения для светлой и тёмной темы. PNG, JPG или WebP до 2 МБ, до 2048 × 2048. Логотип применяется сразу.</p><div class="admin-logo-variants"><div v-for="theme in (['light','dark'] as const)" :key="theme" class="admin-logo-variant"><div class="admin-logo-preview" :class="`is-${theme}`"><img :src="(theme==='light'?draft.logoLight:draft.logoDark) || (theme==='light'?'/icons/symbols/black/symbol-192.png':'/icons/symbols/original/symbol-192.png')" alt="Предпросмотр логотипа" /></div><strong>{{ theme==='light'?'Светлая тема':'Тёмная тема' }}</strong><label class="friend-action admin-logo-upload"><Upload :size="13" />Загрузить<input type="file" accept="image/png,image/jpeg,image/webp" :aria-label="`Логотип: ${theme==='light'?'светлая':'тёмная'} тема`" @change="chooseLogo($event,theme)" /></label><button type="button" class="admin-text-link" :disabled="!(theme==='light'?draft.logoLight:draft.logoDark)" @click="logo(theme)">Стандартный логотип</button></div></div></div></article>
       </section>
       <section v-show="tab==='home'" class="admin-settings-home"><article class="admin-board admin-settings-card"><header class="admin-board-heading"><div><span class="section-kicker">ПЕРВЫЙ ЭКРАН СООБЩЕСТВА</span><h2>Контент главной страницы</h2></div><Gamepad2 :size="19" /></header><div class="admin-settings-card-body"><p class="admin-muted-note">Задайте количество карточек в каждом разделе. Значение 0 скрывает раздел. Счётчики общего онлайна и матчей сохраняют полные значения.</p><div class="admin-settings-counts"><label v-for="item in counts" :key="item.key" class="admin-settings-count"><span>{{ item.label }}</span><input v-model.number="draft[item.key]" type="number" min="0" :max="item.max" required /><small>от 0 до {{ item.max }}</small></label></div></div></article><article class="admin-board admin-settings-card"><header class="admin-board-heading"><div><span class="section-kicker">ДОСТУПНОСТЬ РАЗДЕЛОВ</span><h2>Лобби</h2></div></header><div class="admin-settings-card-body admin-lobby-setting"><div><strong>{{ draft.lobbyEnabled?'Лобби включено':'Лобби отключено' }}</strong><p>Игроки могут создавать комнаты, занимать места и запускать матчи.</p><small>При отключении пункт меню скрывается, новые подключения и запуски запрещаются. Уже запущенные матчи продолжаются, участники сохраняют доступ к своей комнате и выходу из неё.</small></div><label class="admin-settings-switch"><input v-model="draft.lobbyEnabled" type="checkbox" role="switch" aria-label="Включить лобби" /><span></span></label></div></article></section>
+      <section v-show="tab==='telegram'" class="admin-settings-home">
+        <article class="admin-board admin-settings-card">
+          <header class="admin-board-heading"><div><span class="section-kicker">ИНТЕГРАЦИИ / TELEGRAM</span><h2>Уведомления о матчах</h2></div><Settings :size="19" /></header>
+          <div class="admin-settings-card-body">
+            <p class="admin-muted-note">Режим доставки событий Mix и War. Выбор действует для всех пользователей.</p>
+            <label class="auth-field"><span>Способ отправки</span>
+              <select v-model="draft.telegramMatchMode" class="auth-input" aria-label="Способ отправки уведомлений Telegram">
+                <option value="Off">Выкл</option>
+                <option value="TG-Message">TG-Message</option>
+                <option value="SendWidget">SendWidget</option>
+              </select>
+            </label>
+            <p v-if="draft.telegramMatchMode==='Off'" class="admin-muted-note">Блок Telegram-уведомлений исчезнет из настроек пользователей. Отправка матчей остановится.</p>
+            <p v-else-if="draft.telegramMatchMode==='TG-Message'" class="admin-muted-note">Бот отправляет обычное сообщение и обновляет счёт в нём.</p>
+            <p v-else class="admin-muted-note">Экспериментальные HTML Widgets. Telegram сейчас может отклонять их с INPUT_MEDIA_WIDGET_NOT_ALLOWED; сообщения в этом режиме не гарантированы.</p>
+          </div>
+        </article>
+      </section>
       <section v-show="tab==='faq'" class="admin-settings-faq"><div class="admin-section-toolbar"><div><h2>Вопросы и ответы</h2><p class="admin-muted-note">Порядок ниже повторяет порядок на главной. Ответы отображаются обычным текстом.</p></div><button class="friend-action" type="button" :disabled="draft.faq.length>=30" @click="addFaq"><Plus :size="14" />Добавить вопрос</button></div><article v-for="(item,index) in draft.faq" :key="item.id" class="admin-board admin-faq-editor"><header><span>{{ String(index+1).padStart(2,'0') }}</span><strong>{{ item.question || 'Новый вопрос' }}</strong><div><button class="admin-server-icon-button" type="button" :disabled="index===0" aria-label="Переместить вверх" @click="move(index,-1)"><ArrowUp :size="14" /></button><button class="admin-server-icon-button" type="button" :disabled="index===draft.faq.length-1" aria-label="Переместить вниз" @click="move(index,1)"><ArrowDown :size="14" /></button><button class="admin-danger-button" type="button" aria-label="Удалить вопрос" @click="draft.faq.splice(index,1)"><Trash2 :size="14" /></button></div></header><div class="admin-settings-card-body"><label class="auth-field"><span>Вопрос</span><input v-model="item.question" class="auth-input" required maxlength="200" /></label><label class="auth-field"><span>Ответ</span><textarea v-model="item.answer" class="auth-input" required maxlength="3000" rows="3"></textarea></label></div></article><div v-if="!draft.faq.length" class="admin-board admin-board-empty"><CircleHelp :size="25" /><strong>Вопросов пока нет</strong><span>Добавьте первый вопрос. Пустой FAQ скрыт на главной странице.</span><button class="friend-action" type="button" @click="addFaq"><Plus :size="14" />Добавить вопрос</button></div></section>
       <section v-show="tab==='statistics'" class="admin-board admin-settings-card">
         <header class="admin-board-heading"><div><span class="section-kicker">ДАННЫЕ ИГРОКОВ</span><h2>Источник статистики</h2></div><Activity :size="19" /></header>

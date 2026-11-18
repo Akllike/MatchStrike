@@ -4,7 +4,7 @@ import type { WebsiteSettings } from './api'
 
 const state = ref<WebsiteSettings>({
   name: 'MatchStrike', tagline: 'CS COMMUNITY', description: 'Матчи сообщества, игровые серверы и статистика игроков — в одном месте.',
-  serversLimit: 12, mixMatchesLimit: 5, warMatchesLimit: 5, lobbyEnabled: true, logoLight: null, logoDark: null, faq: [],
+  serversLimit: 12, mixMatchesLimit: 5, warMatchesLimit: 5, lobbyEnabled: true, telegramMatchMode: 'TG-Message', logoLight: null, logoDark: null, faq: [],
 })
 export const websiteSettings = readonly(state)
 let loaded = false

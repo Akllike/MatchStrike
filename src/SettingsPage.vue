@@ -14,6 +14,11 @@ import {
   disableGoogleAuthenticator,
   getAccountSessions,
   getCurrentUser,
+  getTelegramLinkStatus,
+  getTelegramNotificationSettings,
+  connectTelegramBot,
+  updateTelegramNotificationSettings,
+  startTelegramLogin,
   getNotificationSettings,
   revokeAccountSession,
   revokeOtherAccountSessions,
@@ -42,6 +47,60 @@ const mediaSpecs: Record<MediaField, { maxBytes: number; maxWidth: number; maxHe
 
 const account = ref<AuthUser | null>(null)
 const loading = ref(true)
+const telegramStatus = ref<{linked:boolean;username:string|null}|null>(null)
+const telegramError = ref('')
+const telegramBusy = ref(false)
+const telegramNotifications = ref<{enabledByAdmin:boolean;linked:boolean;started:boolean;enabled:boolean;botUsername:string|null}|null>(null)
+const telegramNotificationsBusy = ref(false)
+async function loadTelegramNotifications() {
+  try { telegramNotifications.value = await getTelegramNotificationSettings() }
+  catch { telegramError.value = 'Не удалось загрузить настройки уведомлений Telegram.' }
+}
+async function openTelegramBot() {
+  telegramError.value = ''
+  const tab = window.open('', '_blank')
+  try {
+    const url = await connectTelegramBot()
+    if (tab) {
+      tab.opener = null
+      tab.location.replace(url)
+    } else {
+      window.location.assign(url)
+    }
+  } catch {
+    tab?.close()
+    telegramError.value = 'Не удалось создать ссылку подключения бота.'
+  }
+}
+async function toggleTelegramNotifications(enabled: boolean) {
+  if (telegramNotificationsBusy.value) return
+  telegramNotificationsBusy.value = true
+  try { telegramNotifications.value = await updateTelegramNotificationSettings(enabled) }
+  catch { telegramError.value = 'Не удалось сохранить настройку. Убедитесь, что отправили боту /start.' }
+  finally { telegramNotificationsBusy.value = false }
+}
+
+
+async function loadTelegramStatus() {
+  try {
+    telegramStatus.value = await getTelegramLinkStatus()
+  } catch {
+    telegramError.value = 'Не удалось проверить привязку Telegram.'
+  }
+}
+
+async function linkTelegram() {
+  if (telegramBusy.value) return
+  telegramBusy.value = true
+  telegramError.value = ''
+  try {
+    window.location.assign(await startTelegramLogin('link'))
+  } catch {
+    telegramError.value = 'Не удалось начать привязку Telegram.'
+    telegramBusy.value = false
+  }
+}
+
 const activeTab = ref<SettingsTab>('general')
 const pageMessage = ref('')
 const accountBusy = ref(false)
@@ -105,7 +164,7 @@ const notificationCategories: { id: NotificationCategory; title: string; descrip
   { id: 'ticket', title: 'Обращения (тикеты)', description: 'Когда администрация отвечает на ваше обращение.' },
 ]
 
-const emailChanged = computed(() => account.value !== null && accountForm.email.trim().toLowerCase() !== account.value.email)
+const emailChanged = computed(() => account.value !== null && accountForm.email.trim().toLowerCase() !== (account.value.email ?? ''))
 const nicknameChanged = computed(() => account.value !== null && accountForm.nickname.trim() !== account.value.nickname)
 const steamIdChanged = computed(() => account.value !== null && (steamIdForm.steamId.trim() || null) !== account.value.steamId)
 const otherSessionCount = computed(() => sessions.value.filter((session) => !session.isCurrent).length)
@@ -137,7 +196,7 @@ function applyAccount(user: AuthUser) {
   account.value = user
   for (const platform of socialPlatforms) socialForm[platform.id] = socialIdFromValue(platform.id, user.socialLinks?.[platform.id])
   accountForm.nickname = user.nickname
-  accountForm.email = user.email
+  accountForm.email = user.email ?? ''
   accountForm.current_password = ''
   steamIdForm.steamId = user.steamId ?? ''
   emit('accountUpdated', user)
@@ -679,7 +738,19 @@ function formatActivity(value: string | null): string {
     : new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
 }
 
-onMounted(loadAccount)
+onMounted(() => {
+  void loadAccount()
+  void loadTelegramStatus()
+  void loadTelegramNotifications()
+  const query = new URLSearchParams(window.location.search)
+  if (query.has('telegram_linked')) {
+    showTopToast('Telegram успешно привязан.')
+    activeTab.value = 'security'
+  } else if (query.has('telegram_error')) {
+    telegramError.value = 'Не удалось привязать Telegram: аккаунт уже используется или подтверждение истекло.'
+    activeTab.value = 'security'
+  }
+})
 onBeforeUnmount(() => {
 })
 </script>
@@ -813,9 +884,69 @@ onBeforeUnmount(() => {
       </div>
 
       <p v-else class="settings-description">Загружаем параметры уведомлений…</p>
+
+      <section v-if="websiteSettings.telegramMatchMode !== 'Off' && telegramNotifications?.enabledByAdmin !== false" class="settings-block settings-form telegram-notifications-block">
+        <div class="settings-block-heading">
+          <img class="telegram-link-icon" src="/icons/socials/64px/telegram.png" width="22" height="22" alt="" aria-hidden="true" />
+          <strong>Уведомления о матчах в Telegram</strong>
+          <label class="settings-switch">
+            <input type="checkbox" aria-label="Уведомления о матчах в Telegram" :checked="telegramNotifications?.enabled ?? false"
+              :disabled="!telegramNotifications?.linked || !telegramNotifications?.started || telegramNotificationsBusy"
+              @change="toggleTelegramNotifications(($event.target as HTMLInputElement).checked)" />
+            <span aria-hidden="true"></span>
+          </label>
+        </div>
+        <p class="settings-description">Получайте начало матча, изменения счёта и финальный результат в Telegram.</p>
+        <div class="telegram-notification-instructions">
+          <strong>Как включить уведомления</strong>
+          <p>1. Привяжите Telegram к аккаунту MatchStrike.</p>
+          <p>2. Нажмите «Подключить бота» и отправьте команду <code>/start</code> из открывшегося чата. Ссылка действует 10 минут.</p>
+          <p>3. Вернитесь сюда, нажмите «Обновить статус» и включите переключатель.</p>
+          <button v-if="telegramNotifications?.linked" class="dialog-primary telegram-bot-link" type="button" @click="openTelegramBot">Подключить бота</button>
+          <button class="settings-remove-button" type="button" @click="loadTelegramNotifications">Обновить статус</button>
+        </div>
+        <p v-if="telegramNotifications?.started" class="settings-description">✓ Команда /start получена. Бот готов отправлять уведомления.</p>
+        <p v-else-if="telegramNotifications?.linked" class="settings-description">Ожидаем команду /start от привязанного Telegram-аккаунта.</p>
+        <p v-if="telegramError" class="settings-message" role="alert">{{ telegramError }}</p>
+      </section>
+
     </section>
     <section v-else id="settings-panel-security" class="section-panel settings-panel" role="tabpanel" aria-labelledby="settings-tab-security">
       <div class="panel-heading"><div><div class="section-kicker">ACCOUNT SECURITY</div><h2>Безопасность</h2></div><span class="settings-panel-icon"><ShieldCheck :size="17" /></span></div>
+
+      <section class="settings-block settings-form telegram-link-block" aria-labelledby="telegram-link-heading">
+        <div class="settings-block-heading">
+          <img class="telegram-link-icon" src="/icons/socials/64px/telegram.png" width="22" height="22" alt="" aria-hidden="true" />
+          <strong id="telegram-link-heading">Telegram</strong>
+          <span v-if="telegramStatus" class="telegram-link-status" :class="{ 'is-linked': telegramStatus.linked }">
+            <ShieldCheck v-if="telegramStatus.linked" :size="13" />
+            {{ telegramStatus.linked ? 'Привязан' : 'Не привязан' }}
+          </span>
+        </div>
+
+        <template v-if="telegramStatus?.linked">
+          <div class="telegram-linked-account">
+            <div class="telegram-linked-symbol"><ShieldCheck :size="22" /></div>
+            <div class="telegram-linked-details">
+              <strong>Telegram успешно подключён</strong>
+              <span v-if="telegramStatus.username">Аккаунт: @{{ telegramStatus.username }}</span>
+              <span v-else>Аккаунт Telegram подтверждён</span>
+            </div>
+          </div>
+          <p class="settings-description">Вы можете использовать Telegram для входа в MatchStrike. Привязка сохраняется за вашим текущим профилем, матчами и рейтингом.</p>
+        </template>
+        <template v-else-if="telegramStatus">
+          <p class="settings-description">Telegram пока не привязан. Подключите его, чтобы входить в MatchStrike без ввода пароля. Ваш профиль, матчи и рейтинг останутся прежними.</p>
+          <div class="settings-actions">
+            <span>Подтверждение выполняется в Telegram.</span>
+            <button class="dialog-primary" type="button" :disabled="telegramBusy" @click="linkTelegram">
+              {{ telegramBusy ? 'Переходим…' : 'Привязать Telegram' }}
+            </button>
+          </div>
+        </template>
+        <p v-else class="settings-description">Проверяем подключение Telegram…</p>
+        <p v-if="telegramError" class="settings-message" role="alert">{{ telegramError }}</p>
+      </section>
 
       <form class="settings-block settings-form" @submit.prevent="requestPasswordChange">
         <div class="settings-block-heading"><KeyRound :size="15" /><strong>Изменить пароль</strong></div>

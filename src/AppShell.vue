@@ -26,7 +26,7 @@ import {
   Users,
   X,
 } from '@lucide/vue'
-import { ApiRequestError, clearAppNotifications, getAppNotifications, getCurrentUser, getNotificationSettings, loginAccount, logoutAccount, markAllAppNotificationsRead, markAppNotificationRead, registerAccount, savePushSubscription } from './api'
+import { ApiRequestError, clearAppNotifications, getAppNotifications, getCurrentUser, getNotificationSettings, loginAccount, logoutAccount, markAllAppNotificationsRead, markAppNotificationRead, registerAccount, registerTelegramAccount, startTelegramLogin, savePushSubscription } from './api'
 import BrandMark from './components/BrandMark.vue'
 import HeaderFriends from './components/HeaderFriends.vue'
 import AdminSubnav from './components/AdminSubnav.vue'
@@ -78,6 +78,7 @@ const pushPromptVisible = ref(false)
 const pushPromptBusy = ref(false)
 const pushFollowupMessage = ref('')
 const pushPromptSettings = ref<NotificationSettings | null>(null)
+const telegramPending = ref(false)
 const authBusy = ref(false)
 const authMessage = ref('')
 const authErrors = ref<Record<string, string[]>>({})
@@ -507,6 +508,15 @@ const pageEventListeners = computed(() => {
   return {}
 })
 
+async function beginTelegramLogin() {
+  authMessage.value = ''
+  try {
+    window.location.assign(await startTelegramLogin())
+  } catch {
+    authMessage.value = 'Не удалось начать вход через Telegram.'
+  }
+}
+
 function openAuth(mode: Exclude<AuthMode, 'help' | 'privacy' | null>) {
   profileMenuOpen.value = false
   authErrors.value = {}
@@ -526,13 +536,15 @@ function openAuth(mode: Exclude<AuthMode, 'help' | 'privacy' | null>) {
 }
 
 watch(() => route.query.auth, (auth) => {
-  if (auth !== 'login') return
+  if (auth !== 'login' && auth !== 'register') return
 
   const redirect = route.query.redirect
   authRedirect.value = typeof redirect === 'string' && redirect.startsWith('/') && !redirect.startsWith('//')
     ? redirect
     : null
-  openAuth('login')
+  openAuth(auth)
+  telegramPending.value = auth === 'register' && route.query.telegram_pending === '1'
+  if (route.query.telegram_error) authMessage.value = 'Авторизация через Telegram не удалась. Попробуйте ещё раз.'
 }, { immediate: true })
 
 function closeDialog(clearAuthQuery = true) {
@@ -660,7 +672,7 @@ async function submitAuth() {
         password_confirmation: authForm.password_confirmation,
         privacy_accepted: authForm.privacy_accepted,
       }
-      user = await registerAccount(payload)
+      user = telegramPending.value ? await registerTelegramAccount(payload) : await registerAccount(payload)
     } else {
       const payload: LoginPayload = {
         email: authForm.email,
@@ -1003,7 +1015,7 @@ onBeforeUnmount(() => {
                 </label>
               </div>
               <div v-else key="credentials" class="auth-credentials">
-                <label class="auth-field">
+                <label v-if="!telegramPending" class="auth-field">
                   <span>Email</span>
                   <input v-model.trim="authForm.email" class="auth-input" type="email" name="email" autocomplete="email" required maxlength="254" placeholder="name@example.com" :aria-invalid="Boolean(fieldError('email'))" />
                   <span v-if="fieldError('email')" class="field-error">{{ fieldError('email') }}</span>
@@ -1045,7 +1057,15 @@ onBeforeUnmount(() => {
               </button>
             </div>
 
-            <p v-if="!twoFactorRequired" class="auth-switch-row">
+            <div v-if="!telegramPending && !twoFactorRequired" class="auth-telegram-section">
+              <div class="auth-provider-divider"><span>или</span></div>
+              <button class="auth-telegram-button" type="button" @click="beginTelegramLogin">
+                <img src="/icons/socials/64px/telegram.png" width="19" height="19" alt="" aria-hidden="true" />
+                <span>Продолжить с Telegram</span>
+              </button>
+            </div>
+            <p v-if="telegramPending" class="auth-switch-row">Telegram подтверждён. Выберите никнейм и создайте пароль.</p>
+            <p v-if="!telegramPending && !twoFactorRequired" class="auth-switch-row">
               {{ authMode === 'login' ? 'Ещё нет аккаунта?' : 'Уже зарегистрированы?' }}
               <button class="auth-inline-link" type="button" @click="authMode === 'login' ? openAuth('register') : switchToLogin()">
                 {{ authMode === 'login' ? 'Регистрация' : 'Войти' }}

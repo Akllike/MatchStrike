@@ -682,6 +682,26 @@ export async function registerAccount(payload: RegisterPayload): Promise<AuthUse
   return response.user
 }
 
+export async function startTelegramLogin(mode: 'login' | 'link' = 'login'): Promise<string> {
+  const response = await apiFetch(`${apiBaseUrl}/auth/telegram/start?mode=${mode}`, {
+    credentials: 'include', headers: { Accept: 'application/json' }, cache: 'no-store',
+  })
+  const data = await readJson<{url:string}>(response)
+  return data.url
+}
+
+export async function getTelegramLinkStatus(): Promise<{linked:boolean;username:string|null}> {
+  const response = await apiFetch(`${apiBaseUrl}/auth/telegram/status`, {
+    credentials: 'include', headers: { Accept: 'application/json' }, cache: 'no-store',
+  })
+  return readJson(response)
+}
+
+export async function registerTelegramAccount(payload: Omit<RegisterPayload, 'email'>): Promise<AuthUser> {
+  const response = await postJson<{user:AuthUser}>(`${apiBaseUrl}/auth/telegram/register`, payload)
+  return response.user
+}
+
 export async function loginAccount(payload: LoginPayload): Promise<LoginResponse> {
   return postAuth<LoginResponse>('login', payload)
 }
@@ -769,6 +789,7 @@ export interface WebsiteSettings {
   mixMatchesLimit: number
   warMatchesLimit: number
   lobbyEnabled: boolean
+  telegramMatchMode: 'Off' | 'TG-Message' | 'SendWidget'
   logoLight: string | null
   logoDark: string | null
   faq: { id: string; question: string; answer: string }[]
@@ -1212,4 +1233,35 @@ export async function setServerLobbyMaps(id: number, maps: string[]): Promise<Se
 }
 export async function getServerLobbyMaps(id: number): Promise<ServerLobbyMaps> {
   return readJson<ServerLobbyMaps>(await apiFetch(`${apiBaseUrl}/admin/servers/${id}/lobby/maps`, { credentials: 'include', headers: { Accept: 'application/json' } }))
+}
+
+export interface TelegramNotificationSettings {
+  enabledByAdmin: boolean
+  linked: boolean
+  started: boolean
+  enabled: boolean
+  botUsername: string | null
+}
+
+export async function getTelegramNotificationSettings(): Promise<TelegramNotificationSettings> {
+  return readJson(await apiFetch(`${apiBaseUrl}/me/telegram-notifications`, { credentials: 'include', headers: { Accept: 'application/json' }, cache: 'no-store' }))
+}
+
+export async function updateTelegramNotificationSettings(enabled: boolean): Promise<TelegramNotificationSettings> {
+  const csrfToken = await getCsrfToken()
+  return readJson(await apiFetch(`${apiBaseUrl}/me/telegram-notifications`, {
+    method: 'PUT', credentials: 'include',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken },
+    body: JSON.stringify({ enabled }),
+  }))
+}
+
+export async function connectTelegramBot(): Promise<string> {
+  const csrfToken = await getCsrfToken()
+  const response = await apiFetch(`${apiBaseUrl}/me/telegram-notifications/connect`, {
+    method: 'POST', credentials: 'include',
+    headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken },
+  })
+  const data = await readJson<{url:string}>(response)
+  return data.url
 }
