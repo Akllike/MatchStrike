@@ -16,7 +16,7 @@ let timer:ReturnType<typeof setInterval> | undefined
 let activeUser:number | null=null
 let disposed=false
 const online=(friend:FriendSummary) => !friend.isBlocked && (friend.isOnline ?? (!!friend.lastSeenAt && Date.now()-Date.parse(friend.lastSeenAt)<5*60*1000))
-const sorted=computed(()=>[...friends.value].sort((a,b)=>Number(online(b))-Number(online(a)) || a.nickname.localeCompare(b.nickname,'ru')))
+const onlineFriends = computed(() => friends.value.filter(online).sort((a, b) => a.nickname.localeCompare(b.nickname, 'ru')))
 const onlineCount=computed(()=>friends.value.filter(online).length)
 const level=(friend:FriendSummary) => friend.warRating && friend.warRating.level>=1 && friend.warRating.level<=10 ? friend.warRating.level : 0
 async function refresh() {
@@ -54,17 +54,17 @@ onUnmounted(()=>{disposed=true;if(timer)clearInterval(timer);window.removeEventL
     </button>
     <Transition name="account-menu">
       <section v-if="opened" class="header-friends-panel" role="dialog" aria-label="Список друзей">
-        <header><div><strong>Друзья</strong><small>{{ onlineCount }} в сети · {{ friends.length }} всего</small></div><button type="button" :disabled="loading" aria-label="Обновить друзей" v-tooltip="'Обновить список'" @click="refresh"><RefreshCw :size="14" :class="{ 'is-spinning': loading }" /></button></header>
+        <header><div><strong>Друзья</strong><small>{{ onlineCount }} в сети</small></div><button type="button" :disabled="loading" aria-label="Обновить друзей" v-tooltip="'Обновить список'" @click="refresh"><RefreshCw :size="14" :class="{ 'is-spinning': loading }" /></button></header>
         <p v-if="error" class="friends-panel-message" role="alert">{{ error }}</p>
         <p v-else-if="loading && !friends.length" class="friends-panel-message" role="status">Загружаем друзей…</p>
-        <div v-else-if="friends.length" class="header-friends-list">
-          <RouterLink v-for="friend in sorted" :key="friend.id" class="header-friend" :to="{ name:'profile',params:{nickname:friend.nickname} }" @click="opened=false">
+        <div v-else-if="onlineFriends.length" class="header-friends-list">
+          <RouterLink v-for="friend in onlineFriends" :key="friend.id" class="header-friend" :to="{ name:'profile',params:{nickname:friend.nickname} }" @click="opened=false">
             <span class="header-friend-avatar"><img v-if="friend.avatarUrl" :src="friend.avatarUrl" alt="" /><span v-else>{{ friend.nickname.slice(0,1).toUpperCase() }}</span><i :class="{ 'is-online': online(friend), 'is-blocked':friend.isBlocked }" :aria-label="friend.isBlocked ? 'Заблокирован' : online(friend) ? 'В сети' : 'Не в сети'"></i></span>
             <span class="header-friend-name"><strong>{{ friend.nickname }}</strong><small :class="{ 'is-online':online(friend), 'is-blocked':friend.isBlocked }">{{ friend.isBlocked ? 'Заблокирован' : online(friend) ? 'В сети' : 'Не в сети' }}</small></span>
             <span v-if="!friend.isBlocked" class="header-friend-rating" v-tooltip="level(friend) ? `Уровень ${level(friend)}` : 'Unknown'"><img :src="`/icons/levels/level-${level(friend)}.svg`" :alt="level(friend) ? `Уровень ${level(friend)}` : 'Unknown'" /><span>{{ friend.warRating?.elo ?? '—' }} <small>ELO</small></span></span>
           </RouterLink>
         </div>
-        <p v-else class="friends-panel-message">Пока нет друзей. Найдите знакомых игроков и добавьте их в друзья.</p>
+        <p v-else class="friends-panel-message">Сейчас никого из друзей нет в сети.</p>
         <RouterLink class="header-friends-all" to="/friends" @click="opened=false">Все друзья <ArrowUpRight :size="14" /></RouterLink>
       </section>
     </Transition>

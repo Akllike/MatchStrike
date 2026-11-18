@@ -18,7 +18,6 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
-  RefreshCw,
   Settings,
   ShieldCheck,
   Sun,
@@ -48,8 +47,6 @@ interface Account {
 
 const route = useRoute()
 const router = useRouter()
-const { needRefresh, updateServiceWorker } = useRegisterSW({ immediate: true })
-const pwaUpdateBusy = ref(false)
 const darkTheme = ref(document.documentElement.classList.contains('dark'))
 let themeTransitionPending = false
 let themeTransitionTimer: number | undefined
@@ -99,22 +96,48 @@ const authForm = reactive({
   privacy_accepted: false,
 })
 const activityEvents = ['pointerdown', 'keydown', 'scroll', 'touchstart'] as const
-let lastSessionRefreshAt = 0
+let lastSessionRefreshAt = 0 
 
-async function applyPwaUpdate() {
-  if (pwaUpdateBusy.value) return
-  pwaUpdateBusy.value = true
-  try {
-    await updateServiceWorker()
-  } catch (error) {
-    console.error('Не удалось обновить MatchStrike.', error)
-    pwaUpdateBusy.value = false
-  }
-}
+useRegisterSW({
+  immediate: true,
 
-function dismissPwaUpdate() {
-  needRefresh.value = false
-}
+  onRegisteredSW(_swUrl, registration) {
+    if (!registration) return
+
+    let checking = false
+
+    const checkForUpdates = async () => {
+      if (checking || !navigator.onLine) return
+
+      checking = true
+
+      try {
+        await registration.update()
+      } catch (error) {
+        console.warn('PWA update check failed:', error)
+      } finally {
+        checking = false
+      }
+    }
+
+    // Проверяем каждую минуту
+    window.setInterval(checkForUpdates, 60_000)
+
+    // Проверяем при возвращении на вкладку
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        void checkForUpdates()
+      }
+    })
+
+    // Проверяем при восстановлении интернета
+    window.addEventListener('online', () => {
+      void checkForUpdates()
+    })
+
+    void checkForUpdates()
+  },
+})
 
 async function toggleTheme() {
   if (themeTransitionPending) return
@@ -767,15 +790,7 @@ onBeforeUnmount(() => {
 
   <div id="top" class="site-shell" :class="{ 'is-sidebar-collapsed': sidebarCollapsed, 'is-mobile-menu-open': mobileMenuOpen, 'is-landing':isLandingLayout }">
     <Transition name="push-onboarding">
-      <aside v-if="needRefresh" class="push-onboarding-alert pwa-update-alert" role="status" aria-live="polite">
-        <span class="push-onboarding-icon"><RefreshCw :size="17" /></span>
-        <span class="push-onboarding-copy"><strong>Доступно обновление</strong><span>Новая версия {{ websiteSettings.name }} готова. Обновить страницу сейчас?</span></span>
-        <span class="push-onboarding-actions">
-          <button type="button" class="push-onboarding-enable" :disabled="pwaUpdateBusy" @click="applyPwaUpdate">{{ pwaUpdateBusy ? 'Обновляем…' : 'Обновить' }}</button>
-          <button type="button" class="push-onboarding-later" :disabled="pwaUpdateBusy" @click="dismissPwaUpdate">Позже</button>
-        </span>
-      </aside>
-      <aside v-else-if="pushPromptVisible" class="push-onboarding-alert" role="status" aria-live="polite">
+      <aside v-if="pushPromptVisible" class="push-onboarding-alert" role="status" aria-live="polite">
         <span class="push-onboarding-icon"><Bell :size="17" /></span>
         <span class="push-onboarding-copy"><strong>Не пропускайте уведомления</strong><span>Включите push, чтобы получать важные события, даже когда сайт закрыт.</span></span>
         <span class="push-onboarding-actions">
