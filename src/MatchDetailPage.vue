@@ -281,6 +281,14 @@ onUnmounted(() => {
         <div class="match-results">
           <div class="match-results-scroll" role="region" aria-label="Результаты игроков" tabindex="0">
             <table class="match-results-table">
+              <colgroup>
+                <col />
+                <col class="match-results-col-count" span="2" />
+                <col class="match-results-col-small" span="2" />
+                <col class="match-results-col-number" />
+                <col class="match-results-col-wide" span="3" />
+                <col class="match-results-col-small" span="4" />
+              </colgroup>
               <thead><tr><th scope="col">Игрок</th><th scope="col" v-tooltip="'Убийства'">Убийства</th><th scope="col" v-tooltip="'Смерти'">Смерти</th><th scope="col" v-tooltip="'Ассисты'">A</th><th scope="col" v-tooltip="'Количество хедшотов'">HS</th><th scope="col" v-tooltip="'Kills / Deaths'">K/D</th><th scope="col" v-tooltip="'Доля убийств в голову'">HS%</th><th scope="col" v-tooltip="'Средний урон за раунд'">ADR</th><th scope="col" v-tooltip="'Общий урон'">Урон</th><th scope="col" v-tooltip="'Entry-фраги'">Entry</th><th scope="col" v-tooltip="'Трипл-киллы'">3K</th><th scope="col" v-tooltip="'Квадро-киллы'">4K</th><th scope="col" v-tooltip="'Эйсы'">Ace</th></tr></thead>
               <tbody v-for="team in (match.scoreType === 'maps' ? resultTeams : teams)" :key="team.side">
                 <tr class="match-results-team"><th colspan="13" scope="rowgroup"><span class="match-results-side" :class="`is-${team.side.toLowerCase()}`">{{ team.side }}</span><strong>{{ team.name }}</strong><small>Сторона {{ team.side }} · игроков: {{ team.players.length }}</small></th></tr>

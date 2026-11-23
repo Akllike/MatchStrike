@@ -13,14 +13,14 @@ const teams = computed(() => [1, 2].map(team => ({ id: team, name: team === 1 ? 
 const captain = computed(() => props.room.members.find(member => member.userId === props.room.captainId))
 const capacity = computed(() => props.room.teamSize * 2)
 const spaces = computed(() => Math.max(0, capacity.value - props.room.members.length))
-const state = computed(() => props.room.status === 'waiting' && !spaces.value ? 'Составы собраны' : labels[props.room.status])
+const state = computed(() => props.room.status === 'waiting' && props.room.veto ? props.room.veto.complete ? 'Карты определены' : 'Пики и баны' : props.room.status === 'waiting' && !spaces.value ? 'Составы собраны' : labels[props.room.status])
 function hideAvatar(event: Event) { if (event.target instanceof HTMLImageElement) event.target.style.display = 'none' }
 </script>
 
 <template>
   <button type="button" class="lobby-room-card" :aria-label="`${room.name}, ${state}, ${room.members.length} из ${capacity} игроков`" @click="$emit('open', room)">
     <div class="room-cover">
-      <LobbyMapBackdrop :maps="room.maps" :format="room.format" />
+      <LobbyMapBackdrop :maps="room.maps.length ? room.maps : room.mapPool" :format="room.format" />
       <div class="room-cover-top">
         <span class="room-state" :class="`is-${room.status}`"><i></i>{{ state }}</span>
         <span class="room-access" v-tooltip="room.isPrivate ? 'Вход в комнату по паролю' : 'Можно присоединиться без пароля'"><LockKeyhole v-if="room.isPrivate" :size="12" /><ShieldCheck v-else :size="12" />{{ room.isPrivate ? 'По паролю' : 'Открытая' }}</span>
@@ -29,7 +29,7 @@ function hideAvatar(event: Event) { if (event.target instanceof HTMLImageElement
     </div>
     <div class="room-content">
       <div class="room-title-row"><h3>{{ room.name }}</h3><span class="room-open-icon"><ArrowUpRight :size="18" /></span></div>
-      <div class="room-map-line" v-tooltip="room.maps.join(' · ')"><MapIcon :size="12" /><span>{{ room.maps.join(' · ') || 'Карты не выбраны' }}</span></div>
+      <div class="room-map-line" v-tooltip="(room.maps.length ? room.maps : room.mapPool).join(' · ')"><MapIcon :size="12" /><span>{{ room.maps.join(' · ') || 'Пул из 7 карт · выбор капитанов' }}</span></div>
       <div class="room-captain"><Crown :size="12" /><span>Капитан</span><strong>{{ captain?.nickname ?? 'Не выбран' }}</strong></div>
       <div class="room-squads">
         <div v-for="team in teams" :key="team.id" class="room-squad" :class="{ 'is-team-b': team.id === 2 }">

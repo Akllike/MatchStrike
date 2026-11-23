@@ -5,6 +5,7 @@ import { clientsClaim } from 'workbox-core'
 precacheAndRoute(self.__WB_MANIFEST)
 cleanupOutdatedCaches()
 clientsClaim()
+self.skipWaiting()
 
 // Keep app navigation available offline while leaving API requests network-only.
 registerRoute(new NavigationRoute(
@@ -12,7 +13,7 @@ registerRoute(new NavigationRoute(
   { denylist: [/^\/api(?:\/|$)/] },
 ))
 
-// Update only after the user confirms in the in-app update alert.
+// Support update requests from older clients as well as automatic activation.
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting()
 })

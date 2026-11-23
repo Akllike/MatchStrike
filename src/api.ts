@@ -1201,6 +1201,9 @@ export interface LobbyPlayerStatistics {
 }
 export interface LobbyMember { userId: number; nickname: string; avatarUrl: string | null; team: number; seat: number; connected: boolean; statistics: LobbyPlayerStatistics | null }
 export interface LobbyRoom {
+  mapPool: string[]
+  veto: { id: string; captains: number[]; firstTeam: number; complete: boolean; deadline: string | null; remaining: string[]; history: { map: string; action: 'ban' | 'pick' | 'decider'; team: number | null; userId: number | null; automatic: boolean; at: string }[] } | null
+  realtime: GameMatchDetails['realtime']
   id: string; name: string; status: 'waiting' | 'provisioning' | 'joining' | 'live' | 'completed' | 'cancelled'; captainId: number | null
   isPrivate: boolean; teamSize: number; format: 'Classic' | 'BO1' | 'BO3' | 'BO5'; maps: string[]; roundsPerHalf: number
   teamAName: string; teamBName: string; matchId: number | null; deadline: string | null; preparationEndsAt: string | null; finishReason: string | null; createdAt: string
@@ -1225,6 +1228,8 @@ export async function kickLobbyMember(id: string, userId: number): Promise<Lobby
   return (await mutateJson<{ room: LobbyRoom }>(`${apiBaseUrl}/lobbies/${id}/members/${userId}`, 'DELETE')).room
 }
 export async function startLobby(id: string): Promise<LobbyRoom> { return (await postJson<{ room: LobbyRoom }>(`${apiBaseUrl}/lobbies/${id}/start`)).room }
+export async function beginLobbyVeto(id: string, captains: number[]): Promise<LobbyRoom> { return (await postJson<{room: LobbyRoom}>(`${apiBaseUrl}/lobbies/${id}/veto/start`, {captains})).room }
+export async function chooseLobbyMap(id: string, map: string, vetoId: string, step: number): Promise<LobbyRoom> { return (await postJson<{room: LobbyRoom}>(`${apiBaseUrl}/lobbies/${id}/veto`, {map, vetoId, step})).room }
 export async function cancelLobby(id: string): Promise<void> { await mutateJson(`${apiBaseUrl}/lobbies/${id}`, 'DELETE') }
 export async function setServerLobbyMode(id: number, enabled: boolean): Promise<void> { await mutateJson(`${apiBaseUrl}/admin/servers/${id}/lobby`, 'PUT', { enabled }) }
 export interface ServerLobbyMaps { maps: string[]; available: string[]; pending: boolean }

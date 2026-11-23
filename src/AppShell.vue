@@ -518,6 +518,7 @@ async function beginTelegramLogin() {
 }
 
 function openAuth(mode: Exclude<AuthMode, 'help' | 'privacy' | null>) {
+  telegramPending.value = false
   profileMenuOpen.value = false
   authErrors.value = {}
   authMessage.value = ''
@@ -548,7 +549,8 @@ watch(() => route.query.auth, (auth) => {
 }, { immediate: true })
 
 function closeDialog(clearAuthQuery = true) {
-  const shouldClearAuthQuery = clearAuthQuery && route.query.auth === 'login'
+  const shouldClearAuthQuery = clearAuthQuery && (route.query.auth === 'login' || route.query.auth === 'register')
+  telegramPending.value = false
   authMode.value = null
   authErrors.value = {}
   authMessage.value = ''
@@ -657,9 +659,15 @@ function backToCredentials() {
 async function submitAuth() {
   if (authBusy.value || (authMode.value !== 'login' && authMode.value !== 'register')) return
 
-  authBusy.value = true
   authErrors.value = {}
   authMessage.value = ''
+  if (authMode.value === 'register') {
+    if (!authForm.nickname.trim()) authErrors.value.nickname = ['Укажите никнейм.']
+    if (!telegramPending.value && !authForm.email.trim()) authErrors.value.email = ['Укажите email.']
+    if (!authForm.password.trim()) authErrors.value.password = ['Укажите пароль.']
+    if (Object.keys(authErrors.value).length) return
+  }
+  authBusy.value = true
 
   try {
     let user: AuthUser
@@ -698,7 +706,7 @@ async function submitAuth() {
     const redirect = authRedirect.value
     closeDialog(false)
     if (redirect) await router.replace(redirect)
-    else if (route.query.auth === 'login') await router.replace({ name: 'home' })
+    else if (route.query.auth === 'login' || route.query.auth === 'register') await router.replace({ name: 'home' })
   } catch (error) {
     if (error instanceof ApiRequestError) {
       authErrors.value = error.errors
