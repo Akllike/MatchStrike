@@ -1210,7 +1210,7 @@ export interface LobbyRoom {
   server: { address: string; password: string } | null; members: LobbyMember[]
 }
 export interface LobbySettings { name: string; password?: string | null; team_size: number; format: LobbyRoom['format']; maps: string[]; rounds_per_half: number; team_a_name: string; team_b_name: string }
-export interface LobbyListing { rooms: LobbyRoom[]; myRoom: LobbyRoom | null; maps: string[]; availableServers: number; pagination: { page: number; lastPage: number; total: number } }
+export interface LobbyListing { rooms: LobbyRoom[]; myRoom: LobbyRoom | null; maps: string[]; seriesMapPool: string[]; availableServers: number; pagination: { page: number; lastPage: number; total: number } }
 export async function getLobbies(page = 1): Promise<LobbyListing> {
   return readJson<LobbyListing>(await apiFetch(`${apiBaseUrl}/lobbies?page=${page}`, { credentials: 'include', headers: { Accept: 'application/json' } }))
 }

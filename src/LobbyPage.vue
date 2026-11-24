@@ -63,7 +63,9 @@ const captain = computed(() => !!user.value && room.value?.captainId === user.va
 const filled = computed(() => !!room.value && room.value.members.length === room.value.teamSize * 2)
 const terminal = computed(() => room.value && ['completed', 'cancelled'].includes(room.value.status))
 const countdown = computed(() => { const seconds = room.value?.deadline ? Math.max(0, Math.ceil((Date.parse(room.value.deadline) - now.value) / 1000)) : 300; return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` })
-const mapCount = computed(() => form.value.format === 'Classic' ? 1 : 7)
+const mapCount = computed(() => form.value.format === 'Classic' ? 1 : 0)
+const seriesMapPool = computed(() => listing.value?.seriesMapPool ?? [])
+const mapsReady = computed(() => form.value.format === 'Classic' ? form.value.maps.length === 1 : seriesMapPool.value.length === 7)
 const stateLabels: Record<LobbyRoom['status'], string> = { waiting: 'Набор игроков', provisioning: 'Готовим сервер', joining: 'Подключение игроков', live: 'Матч на сервере', completed: 'Матч завершён', cancelled: 'Комната закрыта' }
 const seatMember = (team: number, seat: number) => room.value?.members.find(member => member.team === team && member.seat === seat)
 function closeReason(reason: string | null): string {
@@ -134,27 +136,33 @@ async function openEditor(edit = false) {
   if (!websiteSettings.value.lobbyEnabled) return
   if (!user.value) { login(); return }
   if (!user.value.steamId) { error.value = 'Привяжите Steam в настройках профиля, чтобы создавать комнаты.'; return }
-  if (!listing.value) {
-    try { listing.value = await getLobbies(page.value) }
-    catch (e) { error.value = e instanceof Error ? e.message : 'Не удалось загрузить параметры лобби.'; return }
-  }
+  try { listing.value = await getLobbies(page.value) }
+  catch (e) { error.value = e instanceof Error ? e.message : 'Не удалось загрузить параметры лобби.'; return }
   editing.value = edit ? room.value?.id : undefined
-  form.value = edit && room.value ? { name: room.value.name, team_size: room.value.teamSize, format: room.value.format, maps: [...(room.value.mapPool ?? room.value.maps)], rounds_per_half: room.value.roundsPerHalf, team_a_name: room.value.teamAName, team_b_name: room.value.teamBName, password: '' } : { ...defaultSettings(), name: `Комната ${user.value.nickname}`, maps: listing.value?.maps.slice(0, 1) ?? [] }
+  form.value = edit && room.value ? { name: room.value.name, team_size: room.value.teamSize, format: room.value.format, maps: room.value.format === 'Classic' ? [...room.value.maps] : [], rounds_per_half: room.value.roundsPerHalf, team_a_name: room.value.teamAName, team_b_name: room.value.teamBName, password: '' } : { ...defaultSettings(), name: `Комната ${user.value.nickname}`, maps: listing.value?.maps.slice(0, 1) ?? [] }
   formError.value = ''; changePassword.value = !edit
   await nextTick(); editor.value?.showModal()
 }
 function toggleMap(map: string) {
+  if (form.value.format !== 'Classic') return
   const index = form.value.maps.indexOf(map)
   if (index >= 0) form.value.maps.splice(index, 1)
   else if (form.value.maps.length < mapCount.value) form.value.maps.push(map)
   else if (mapCount.value === 1) form.value.maps = [map]
 }
-watch(() => form.value.format, () => { form.value.maps = form.value.maps.slice(0, mapCount.value) })
+watch(() => form.value.format, format => {
+  if (format === 'Classic') {
+    form.value.maps = form.value.maps.slice(0, 1)
+    if (!form.value.maps.length && listing.value?.maps.length) form.value.maps = [listing.value.maps[0]]
+  } else {
+    form.value.maps = []
+  }
+})
 async function submitRoom() {
   if (busy.value) return
   busy.value = true; formError.value = ''; version++
   try {
-    const payload = { ...form.value }
+    const payload = { ...form.value, maps: form.value.format === 'Classic' ? form.value.maps : [] }
     if (editing.value && !changePassword.value) delete payload.password
     if (payload.password === '') payload.password = null
     const saved = await saveLobby(payload, editing.value)
@@ -239,7 +247,54 @@ onUnmounted(() => { disposed = true; version++; socket?.disconnect(); if (poll) 
     </div>
     </Transition>
     <SiteAlert :message="copied ? `${copied} скопирована` : ''" tone="success" @close="copied = ''" />
-    <dialog ref="editor" class="lobby-dialog" @click="event => { if (event.target === editor) editor?.close() }"><form @submit.prevent="submitRoom"><header><div><span class="section-kicker">ВАШ МАТЧ — ВАШИ ПРАВИЛА</span><h2>{{ editing ? 'Настройки комнаты' : 'Создать лобби' }}</h2></div><button type="button" aria-label="Закрыть" @click="editor?.close()"><X :size="20" /></button></header><label class="lobby-field">Название комнаты<input v-model.trim="form.name" required minlength="3" maxlength="64" /></label><div class="lobby-form-row"><label class="lobby-field">Команда A<input v-model.trim="form.team_a_name" required maxlength="40" /></label><label class="lobby-field">Команда B<input v-model.trim="form.team_b_name" required maxlength="40" /></label></div><fieldset><legend>Игроков за сторону</legend><div class="lobby-segments"><button v-for="size in [1, 2, 3, 4, 5]" :key="size" type="button" :aria-pressed="form.team_size === size" @click="form.team_size = size">{{ size }} × {{ size }}</button></div></fieldset><fieldset><legend>Формат матча</legend><div class="lobby-segments"><button v-for="format in (['Classic', 'BO1', 'BO3', 'BO5'] as const)" :key="format" type="button" :aria-pressed="form.format === format" @click="form.format = format">{{ format }}</button></div><p>{{ form.format === 'Classic' ? 'Обычный War на одной карте' : form.format === 'BO1' ? 'Серия из одной карты' : `Серия до ${form.format === 'BO3' ? 2 : 3} побед` }}</p></fieldset><fieldset><legend>Карты <small>{{ form.maps.length }} / {{ mapCount }}</small></legend><p>{{ form.format === 'Classic' ? 'Выберите карту матча.' : 'Выберите семь карт для пиков и банов. Порядок игры определят капитаны в комнате. Весь пул должен поддерживаться одним сервером.' }}</p><div class="lobby-map-picker"><button v-for="map in listing?.maps ?? []" :key="map" type="button" :aria-pressed="form.maps.includes(map)" @click="toggleMap(map)"><span>{{ form.maps.includes(map) ? form.maps.indexOf(map) + 1 : '+' }}</span>{{ map }}</button></div><p v-if="!listing?.maps.length">Карты появятся после подключения сервера с включённым режимом лобби.</p></fieldset><div class="lobby-form-row"><label class="lobby-field">Раундов за сторону<select v-model.number="form.rounds_per_half"><option :value="15">MR15 — до 16 побед</option><option :value="12">MR12 — до 13 побед</option></select></label><label class="lobby-field">{{ editing ? 'Новый пароль комнаты' : 'Пароль комнаты' }}<input v-model="form.password" type="password" :disabled="!!editing && !changePassword" minlength="4" maxlength="64" autocomplete="new-password" placeholder="Без пароля — открытая" /></label></div><label v-if="editing" class="lobby-check"><input v-model="changePassword" type="checkbox" /> Изменить пароль (пустое поле снимет защиту)</label><p class="lobby-dialog-note"><ShieldCheck :size="15" /> Пароль комнаты нужен для входа в лобби. Пароль игрового сервера создаётся отдельно при запуске.</p><button class="lobby-primary" type="submit" :disabled="busy || form.maps.length !== mapCount"><LoaderCircle v-if="busy" class="is-spinning" :size="16" /><Plus v-else :size="16" /> {{ editing ? 'Сохранить настройки' : 'Создать комнату' }}</button></form></dialog>
+    <dialog ref="editor" class="lobby-dialog" @click="event => { if (event.target === editor) editor?.close() }">
+      <form @submit.prevent="submitRoom">
+        <header>
+          <div><span class="section-kicker">ВАШ МАТЧ — ВАШИ ПРАВИЛА</span><h2>{{ editing ? 'Настройки комнаты' : 'Создать лобби' }}</h2></div>
+          <button type="button" aria-label="Закрыть" @click="editor?.close()"><X :size="20" /></button>
+        </header>
+        <label class="lobby-field">Название комнаты<input v-model.trim="form.name" required minlength="3" maxlength="64" /></label>
+        <div class="lobby-form-row">
+          <label class="lobby-field">Команда A<input v-model.trim="form.team_a_name" required maxlength="40" /></label>
+          <label class="lobby-field">Команда B<input v-model.trim="form.team_b_name" required maxlength="40" /></label>
+        </div>
+        <fieldset>
+          <legend>Игроков за сторону</legend>
+          <div class="lobby-segments"><button v-for="size in [1, 2, 3, 4, 5]" :key="size" type="button" :aria-pressed="form.team_size === size" @click="form.team_size = size">{{ size }} × {{ size }}</button></div>
+        </fieldset>
+        <fieldset>
+          <legend>Формат матча</legend>
+          <div class="lobby-segments"><button v-for="format in (['Classic', 'BO1', 'BO3', 'BO5'] as const)" :key="format" type="button" :aria-pressed="form.format === format" @click="form.format = format">{{ format }}</button></div>
+          <p>{{ form.format === 'Classic' ? 'Обычный War на одной карте' : form.format === 'BO1' ? 'Серия из одной карты' : `Серия до ${form.format === 'BO3' ? 2 : 3} побед` }}</p>
+        </fieldset>
+        <fieldset>
+          <legend>{{ form.format === 'Classic' ? 'Карта матча' : 'Пул карт серии' }} <small>{{ form.format === 'Classic' ? `${form.maps.length} / 1` : `${seriesMapPool.length} / 7 из конфигурации` }}</small></legend>
+          <template v-if="form.format === 'Classic'">
+            <p>Выберите карту для матча.</p>
+            <div class="lobby-map-picker"><button v-for="map in listing?.maps ?? []" :key="map" type="button" :aria-pressed="form.maps.includes(map)" @click="toggleMap(map)"><span>{{ form.maps.includes(map) ? '✓' : '+' }}</span>{{ map }}</button></div>
+            <p v-if="!listing?.maps.length">Карты появятся после подключения сервера с включённым режимом лобби.</p>
+          </template>
+          <template v-else>
+            <p>Карты автоматически берутся из конфигурации сервера лобби. Капитаны проведут пики и баны перед началом серии.</p>
+            <div v-if="seriesMapPool.length" class="lobby-map-picker is-configured"><span v-for="map in seriesMapPool" :key="map">{{ map }}</span></div>
+            <p v-else>В конфигурации не найден доступный пул из семи карт. Проверьте настройки сервера лобби.</p>
+          </template>
+        </fieldset>
+        <div class="lobby-form-row">
+          <label class="lobby-field">Раундов за сторону
+            <select v-model.number="form.rounds_per_half">
+              <option :value="15">MR15 — до 16 побед</option>
+              <option :value="12">MR12 — до 13 побед</option>
+              <option :value="8">MR8 — до 9 побед</option>
+            </select>
+          </label>
+          <label class="lobby-field">{{ editing ? 'Новый пароль комнаты' : 'Пароль комнаты' }}<input v-model="form.password" type="password" :disabled="!!editing && !changePassword" minlength="4" maxlength="64" autocomplete="new-password" placeholder="Без пароля — открытая" /></label>
+        </div>
+        <label v-if="editing" class="lobby-check"><input v-model="changePassword" type="checkbox" /> Изменить пароль (пустое поле снимет защиту)</label>
+        <p class="lobby-dialog-note"><ShieldCheck :size="15" /> Пароль комнаты нужен для входа в лобби. Пароль игрового сервера создаётся отдельно при запуске.</p>
+        <button class="lobby-primary" type="submit" :disabled="busy || !mapsReady"><LoaderCircle v-if="busy" class="is-spinning" :size="16" /><Plus v-else :size="16" /> {{ editing ? 'Сохранить настройки' : 'Создать комнату' }}</button>
+      </form>
+    </dialog>
     <dialog ref="passwordDialog" class="lobby-dialog is-password"><form @submit.prevent="joinPrivate"><header><h2>Закрытая комната</h2><button type="button" aria-label="Закрыть" @click="passwordDialog?.close()"><X :size="19" /></button></header><label class="lobby-field">Пароль комнаты<input v-model="joinPassword" type="password" required maxlength="64" autocomplete="off" /></label><button class="lobby-primary" type="submit" :disabled="busy"><LockKeyhole :size="15" /> Занять место</button></form></dialog>
   </div>
 </template>
@@ -259,6 +314,6 @@ onUnmounted(() => { disposed = true; version++; socket?.disconnect(); if (poll) 
 .lobby-teams { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }.lobby-team { --team-color:var(--yellow); padding:20px; border-radius:16px; background:var(--panel); box-shadow:var(--shadow-soft); }.lobby-team.is-team-b { --team-color:#b18cdb; }.lobby-team header { display:flex; align-items:center; gap:11px; margin-bottom:20px; }.lobby-team header>span { display:grid; place-items:center; width:34px; height:34px; border-radius:10px; background:var(--surface-tint); color:var(--team-color); font-size:15px; font-weight:700; }.lobby-team h3 { min-width:0; flex:1; overflow-wrap:anywhere; font-size:16px; font-weight:700; }.lobby-team header small { color:var(--muted); font-size:11px; white-space:nowrap; }
 .lobby-seat { display:flex; align-items:center; gap:12px; width:100%; padding:14px 10px; border:0; border-radius:10px; background:transparent; color:var(--muted); text-align:left; margin-top:5px; }.lobby-seat:disabled { opacity:1!important; cursor:default!important; }.lobby-seat:not(:disabled):hover,.lobby-seat.is-me { background:var(--surface-tint); }.seat-number { color:var(--subtle); font-size:10px; }.lobby-seat img,.seat-avatar { flex-shrink:0; display:grid; place-items:center; width:39px; height:39px; border-radius:50%; object-fit:cover; color:var(--team-color); background:var(--line-soft); }.seat-avatar.empty { border:1px dashed var(--line); background:none; color:var(--subtle); }.seat-player { display:flex; flex:1; min-width:0; flex-direction:column; gap:6px; }.seat-player strong { color:var(--text); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.seat-player small { font-size:9px; color:var(--muted); }.seat-crown { color:#d1a644; }.seat-connection { flex-shrink:0; width:7px; height:7px; border-radius:50%; background:var(--subtle); }.seat-connection.connected { background:#21b68c; box-shadow:0 0 0 4px #21b68c15; }
 .lobby-countdown { display:flex; gap:18px; align-items:center; padding:22px; margin-bottom:22px; border-radius:14px; background:var(--surface-tint); color:var(--yellow); }.lobby-countdown>div { display:flex; flex-direction:column; gap:5px; flex-shrink:0; }.lobby-countdown strong { font-size:30px; font-weight:700; font-variant-numeric:tabular-nums; }.lobby-countdown span { font-size:9px; color:var(--muted); }.lobby-countdown p { font-size:11px; line-height:1.8; color:var(--muted); margin-left:auto; max-width:360px; }.lobby-connect { display:flex; flex-wrap:wrap; gap:20px; justify-content:space-between; align-items:center; padding:24px; border-radius:15px; background:var(--panel); box-shadow:var(--shadow-soft); margin-top:22px; }.lobby-connect h3 { font-size:21px; margin:8px 0 12px; }.lobby-connect p { display:flex; align-items:center; flex-wrap:wrap; gap:7px; font-size:11px; color:var(--muted); }.lobby-connect code { color:var(--text); overflow-wrap:anywhere; }.lobby-connect p button { display:flex; border:0; color:var(--muted); background:none; }.lobby-connect>div:last-child { display:flex; flex-wrap:wrap; gap:10px; }.lobby-controls { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:20px; margin-top:25px; }.lobby-controls>p { display:grid; grid-template-columns:auto 1fr; gap:7px; font-size:11px; color:var(--muted); }.lobby-controls>p svg { color:#d1a644; }.lobby-controls>p span { grid-column:2; font-size:10px; }.lobby-controls>div { display:flex; flex-wrap:wrap; gap:8px; }.lobby-result { display:flex; flex-direction:column; align-items:center; gap:15px; padding:40px 20px; border-radius:16px; background:var(--panel); color:var(--yellow); text-align:center; }.lobby-result h3 { color:var(--text); font-size:21px; }.lobby-result p { color:var(--muted); font-size:12px; }.lobby-copied { position:fixed; z-index:100; bottom:25px; left:50%; transform:translateX(-50%); padding:14px 22px; border-radius:10px; color:var(--text); background:var(--panel); box-shadow:var(--shadow-soft); font-size:12px; }
-.lobby-dialog { position:fixed; max-height:90dvh; width:min(620px,calc(100vw - 30px)); padding:0; border:0; border-radius:18px; background:var(--panel); color:var(--text); box-shadow:var(--shadow-soft); margin:auto; }.lobby-dialog::backdrop { background:#020817b8; backdrop-filter:blur(5px); }.lobby-dialog form { padding:27px; }.lobby-dialog header { display:flex; justify-content:space-between; gap:15px; align-items:center; margin-bottom:24px; }.lobby-dialog h2 { font-size:23px; font-weight:700; margin-top:6px; }.lobby-dialog header button { border:0; padding:5px; background:none; color:var(--muted); }.lobby-field { display:flex; flex:1; min-width:0; flex-direction:column; gap:9px; font-size:11px; color:var(--muted); margin-top:16px; }.lobby-field input,.lobby-field select { width:100%; border:1px solid var(--line); border-radius:9px; padding:11px 12px; background:var(--bg); color:var(--text); font-size:12px; }.lobby-form-row { display:flex; gap:15px; }.lobby-dialog fieldset { padding:0; margin:24px 0 0; border:0; }.lobby-dialog legend { font-size:12px; font-weight:600; margin-bottom:12px; }.lobby-dialog legend small { color:var(--subtle); margin-left:8px; }.lobby-segments { display:flex; gap:7px; }.lobby-segments button { flex:1; border:0; border-radius:9px; padding:12px 8px; background:var(--line-soft); color:var(--muted); font-size:12px; }.lobby-segments button[aria-pressed=true] { color:var(--yellow); background:var(--surface-tint); box-shadow:inset 0 -2px var(--yellow); }.lobby-dialog fieldset p { color:var(--muted); font-size:10px; line-height:1.8; margin:10px 0; }.lobby-map-picker { display:flex; flex-wrap:wrap; gap:6px; }.lobby-map-picker button { display:flex; gap:8px; align-items:center; padding:8px 10px; border:0; border-radius:7px; font-size:10px; color:var(--muted); background:var(--line-soft); }.lobby-map-picker button[aria-pressed=true] { color:var(--yellow); background:var(--surface-tint); }.lobby-map-picker button span { font-size:9px; }.lobby-dialog-note { display:flex; align-items:flex-start; gap:8px; margin:22px 0!important; font-size:10px; line-height:1.8; color:var(--muted); }.lobby-dialog-note svg { flex-shrink:0; color:var(--yellow); margin-top:3px; }.lobby-dialog form>.lobby-primary { width:100%; }.lobby-check { display:flex; gap:8px; font-size:11px; margin-top:15px; color:var(--muted); }.is-password { max-width:380px; }.is-password .lobby-primary { margin-top:22px; }
+.lobby-dialog { position:fixed; max-height:90dvh; width:min(620px,calc(100vw - 30px)); padding:0; border:0; border-radius:18px; background:var(--panel); color:var(--text); box-shadow:var(--shadow-soft); margin:auto; }.lobby-dialog::backdrop { background:#020817b8; backdrop-filter:blur(5px); }.lobby-dialog form { padding:27px; }.lobby-dialog header { display:flex; justify-content:space-between; gap:15px; align-items:center; margin-bottom:24px; }.lobby-dialog h2 { font-size:23px; font-weight:700; margin-top:6px; }.lobby-dialog header button { border:0; padding:5px; background:none; color:var(--muted); }.lobby-field { display:flex; flex:1; min-width:0; flex-direction:column; gap:9px; font-size:11px; color:var(--muted); margin-top:16px; }.lobby-field input,.lobby-field select { width:100%; border:1px solid var(--line); border-radius:9px; padding:11px 12px; background:var(--bg); color:var(--text); font-size:12px; }.lobby-form-row { display:flex; gap:15px; }.lobby-dialog fieldset { padding:0; margin:24px 0 0; border:0; }.lobby-dialog legend { font-size:12px; font-weight:600; margin-bottom:12px; }.lobby-dialog legend small { color:var(--subtle); margin-left:8px; }.lobby-segments { display:flex; gap:7px; }.lobby-segments button { flex:1; border:0; border-radius:9px; padding:12px 8px; background:var(--line-soft); color:var(--muted); font-size:12px; }.lobby-segments button[aria-pressed=true] { color:var(--yellow); background:var(--surface-tint); box-shadow:inset 0 -2px var(--yellow); }.lobby-dialog fieldset p { color:var(--muted); font-size:10px; line-height:1.8; margin:10px 0; }.lobby-map-picker { display:flex; flex-wrap:wrap; gap:6px; }.lobby-map-picker button,.lobby-map-picker.is-configured span { display:flex; gap:8px; align-items:center; padding:8px 10px; border:0; border-radius:7px; font-size:10px; color:var(--muted); background:var(--line-soft); }.lobby-map-picker.is-configured span { border-radius:7px; font-size:10px; color:var(--yellow); background:var(--surface-tint); }.lobby-map-picker button[aria-pressed=true] { color:var(--yellow); background:var(--surface-tint); }.lobby-map-picker button span { font-size:9px; }.lobby-dialog-note { display:flex; align-items:flex-start; gap:8px; margin:22px 0!important; font-size:10px; line-height:1.8; color:var(--muted); }.lobby-dialog-note svg { flex-shrink:0; color:var(--yellow); margin-top:3px; }.lobby-dialog form>.lobby-primary { width:100%; }.lobby-check { display:flex; gap:8px; font-size:11px; margin-top:15px; color:var(--muted); }.is-password { max-width:380px; }.is-password .lobby-primary { margin-top:22px; }
 @media(max-width:700px) { .lobby-toolbar { align-items:flex-start; flex-wrap:wrap; }.lobby-room-hero { flex-direction:column; align-items:flex-start; justify-content:flex-end; padding:22px 18px; }.lobby-room-hero h2 { font-size:25px; }.lobby-teams { grid-template-columns:1fr; gap:14px; }.lobby-team { padding:15px; }.lobby-countdown { flex-wrap:wrap; padding:18px; }.lobby-countdown p { width:100%; margin-left:0; max-width:none; }.lobby-connect { padding:20px; }.lobby-connect h3 { font-size:18px; }.lobby-dialog form { padding:21px; }.lobby-form-row { flex-direction:column; gap:0; }.lobby-dialog h2 { font-size:21px; }.lobby-room-maps { gap:7px; }.lobby-controls>div { width:100%; }.lobby-controls .lobby-primary { flex:1; } }
 </style>
