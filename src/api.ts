@@ -98,6 +98,28 @@ export interface DonutStatsLeaderboardPage {
   pagination: { currentPage: number; lastPage: number; total: number }
 }
 
+export interface DonutStatsSeasonPlayer {
+  id: string
+  steamId: string
+  nickname: string
+  profileNickname: string | null
+  avatarUrl: string | null
+  coverUrl: string | null
+  matches: number
+  kills: number
+  deaths: number
+  headshots: number
+  kdr: number
+  hs: number | null
+  adr: number | null
+}
+export interface DonutStatsSeasonLeaderboard {
+  season: { year: number; quarter: number; label: string; startsAt: string; endsAt: string }
+  players: DonutStatsSeasonPlayer[]
+  total: number
+  ranking: string[]
+}
+
 export interface AuthUser {
   id: number
   email: string
@@ -789,6 +811,7 @@ export interface WebsiteSettings {
   mixMatchesLimit: number
   warMatchesLimit: number
   lobbyEnabled: boolean
+  seasonEnabled: boolean
   telegramMatchMode: 'Off' | 'TG-Message' | 'SendWidget'
   logoLight: string | null
   logoDark: string | null
@@ -1179,6 +1202,11 @@ export async function getDonutStatsPlayers(page = 1, search = ''): Promise<Donut
     headers: { Accept: 'application/json' },
   })
   return readJson<DonutStatsLeaderboardPage>(response)
+}
+
+export async function getDonutStatsSeasonPlayers(): Promise<DonutStatsSeasonLeaderboard> {
+  const response = await apiFetch(`${apiBaseUrl}/donutstats/season`, { headers: { Accept: 'application/json' } })
+  return readJson<DonutStatsSeasonLeaderboard>(response)
 }
 
 export async function getAdminStatisticsSource(): Promise<StatisticsSource> {

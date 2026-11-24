@@ -12,6 +12,7 @@ import {
   Bell,
   EllipsisVertical,
   CircleHelp,
+  ChevronDown,
   Gamepad2,
   LogIn,
   Menu,
@@ -55,6 +56,7 @@ const currentUser = ref<Account | null>(null)
 const authReady = ref(false)
 const isLandingLayout = computed(() => route.name === 'home' && !currentUser.value)
 const sidebarCollapsed = ref(false)
+const statsSubmenuOpen = ref(route.path.startsWith('/stats'))
 const mobileMenuOpen = ref(false)
 const mobileMenuToggle = ref<HTMLButtonElement | null>(null)
 const mobileMenuClose = ref<HTMLButtonElement | null>(null)
@@ -190,7 +192,17 @@ watch(currentUser, (user) => {
 
 watch(() => route.fullPath, () => {
   closeMobileMenu(false)
+  statsSubmenuOpen.value = route.path.startsWith('/stats')
 })
+
+const isStatsRoute = computed(() => route.path === '/stats' || route.path.startsWith('/stats/'))
+function toggleStatsSubmenu() {
+  if (sidebarCollapsed.value) {
+    void router.push({ name: 'stats' })
+    return
+  }
+  statsSubmenuOpen.value = !statsSubmenuOpen.value
+}
 
 function openMobileMenu() {
   mobileMenuOpen.value = true
@@ -448,7 +460,7 @@ const navigation = [
   { id: 'stats', label: 'Статистика', to: '/stats', icon: Activity },
   { id: 'bans', label: 'Баны', to: '/bans', icon: Ban },
 ]
-const visibleNavigation = computed(() => navigation.filter(item => item.id !== 'lobby' || (currentUser.value !== null && websiteSettings.value.lobbyEnabled)))
+const visibleNavigation = computed(() => navigation.filter(item => item.id !== 'stats' && (item.id !== 'lobby' || (currentUser.value !== null && websiteSettings.value.lobbyEnabled))))
 const isAdminWorkspace = computed(() => route.matched.some(record => record.meta.requiresAdmin))
 
 const profileLink = computed(() => currentUser.value
@@ -845,21 +857,32 @@ onBeforeUnmount(() => {
       <div class="sidebar-caption">{{ isAdminWorkspace ? 'УПРАВЛЕНИЕ' : 'СООБЩЕСТВО' }}</div>
       <AdminSubnav v-if="isAdminWorkspace" :role="currentUser?.adminRole ?? null" :collapsed="sidebarCollapsed" @navigate="closeMobileMenu(false)" />
       <nav v-else id="primary-navigation" class="main-nav" aria-label="Основная навигация">
-        <RouterLink
-          v-for="item in visibleNavigation"
-          :key="item.id"
-          :to="item.to"
-          class="nav-link"
-          :class="{ 'is-active': route.path === item.to || route.path.startsWith(`${item.to}/`) }"
-          :aria-label="item.label"
-          v-tooltip="sidebarCollapsed ? item.label : undefined"
-          active-class="is-active"
-          @click="closeMobileMenu(false)"
-        >
-          <span class="nav-icon"><component :is="item.icon" :size="18" :stroke-width="1.8" /></span>
-          <span class="nav-label">{{ item.label }}</span>
-          <ArrowUpRight v-if="route.path === item.to || route.path.startsWith(`${item.to}/`)" class="nav-arrow" :size="14" />
-        </RouterLink>
+        <template v-for="item in visibleNavigation" :key="item.id">
+          <RouterLink
+            :to="item.to"
+            class="nav-link"
+            :class="{ 'is-active': route.path === item.to || route.path.startsWith(`${item.to}/`) }"
+            :aria-label="item.label"
+            v-tooltip="sidebarCollapsed ? item.label : undefined"
+            active-class="is-active"
+            @click="closeMobileMenu(false)"
+          >
+            <span class="nav-icon"><component :is="item.icon" :size="18" :stroke-width="1.8" /></span>
+            <span class="nav-label">{{ item.label }}</span>
+            <ArrowUpRight v-if="route.path === item.to || route.path.startsWith(`${item.to}/`)" class="nav-arrow" :size="14" />
+          </RouterLink>
+          <div v-if="item.id === 'matches'" class="nav-group" :class="{ 'is-active': isStatsRoute, 'is-expanded': statsSubmenuOpen }">
+            <button type="button" class="nav-link nav-group-trigger" :class="{ 'is-active': isStatsRoute }" :aria-expanded="!sidebarCollapsed && statsSubmenuOpen" aria-controls="stats-submenu" aria-label="Статистика" v-tooltip="sidebarCollapsed ? 'Статистика' : undefined" @click="toggleStatsSubmenu">
+              <span class="nav-icon"><Activity :size="18" :stroke-width="1.8" /></span>
+              <span class="nav-label">Статистика</span>
+              <ChevronDown class="nav-group-chevron" :size="15" />
+            </button>
+            <div v-if="statsSubmenuOpen && !sidebarCollapsed" id="stats-submenu" class="nav-submenu">
+              <RouterLink to="/stats/players" class="nav-sublink" :class="{ 'is-active': route.path === '/stats/players' || route.path === '/stats' }" @click="closeMobileMenu(false)">Игроки</RouterLink>
+              <RouterLink v-if="websiteSettings.seasonEnabled" to="/stats/season" class="nav-sublink" :class="{ 'is-active': route.path === '/stats/season' }" @click="closeMobileMenu(false)">Сезон <small>ТОП 50</small></RouterLink>
+            </div>
+          </div>
+        </template>
       </nav>
 
       <nav v-if="currentUser?.adminRole && !isAdminWorkspace" class="admin-nav" aria-label="Администрирование">

@@ -50,6 +50,8 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--yellow); outlin
 .site-shell.is-sidebar-collapsed .sidebar-caption { max-height: 0; margin: 0; opacity: 0; }
 .site-shell.is-sidebar-collapsed .nav-arrow,
 .site-shell.is-sidebar-collapsed .help-arrow { width: 0; max-width: 0; flex-basis: 0; margin-left: 0; opacity: 0; }
+.site-shell.is-sidebar-collapsed .nav-group-chevron,
+.site-shell.is-sidebar-collapsed .nav-submenu { display: none; }
 .site-shell.is-sidebar-collapsed .main-nav { margin-top: 20px; }
 .site-shell.is-sidebar-collapsed .nav-link,
 .site-shell.is-sidebar-collapsed .help-link { justify-content: center; gap: 0; padding: 0; }
@@ -60,6 +62,16 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--yellow); outlin
 .brand-name small { margin-top: 6px; color: var(--subtle); font-family: 'IBM Plex Sans', sans-serif; font-size: 8px; font-weight: 600; letter-spacing: 1.65px; }
 .sidebar-caption { max-height: 16px; overflow: hidden; margin: 58px 9px 13px; color: var(--subtle); font-size: 9px; font-weight: 700; letter-spacing: 1.5px; transition: max-height 220ms ease, margin 220ms ease, opacity 140ms ease; }
 .main-nav { display: grid; gap: 5px; transition: margin-top 220ms ease; }
+.nav-group { position: relative; display: grid; gap: 3px; }
+.nav-group-trigger { width: 100%; background: transparent; cursor: pointer; text-align: left; }
+.nav-group-trigger .nav-group-chevron { display: block; flex: 0 0 15px; margin-left: auto; color: var(--subtle); transition: transform 180ms ease, opacity 140ms ease; }
+.nav-group.is-expanded .nav-group-chevron { transform: rotate(180deg); }
+.nav-group.is-active > .nav-group-trigger::before { background: var(--yellow); }
+.nav-submenu { display: grid; gap: 3px; margin: 0 0 4px 41px; }
+.nav-sublink { display: flex; min-height: 34px; align-items: center; gap: 8px; padding: 0 11px; border-radius: 4px; color: var(--muted); font-size: 11px; font-weight: 500; transition: color 150ms ease, background 150ms ease; }
+.nav-sublink:hover { color: var(--text); background: var(--surface-tint); }
+.nav-sublink.is-active { color: var(--yellow); background: var(--surface-tint); }
+.nav-sublink small { margin-left: auto; color: var(--subtle); font-size: 8px; font-weight: 700; letter-spacing: .04em; }
 .admin-nav { display: grid; gap: 5px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
 .nav-link, .help-link { position: relative; display: flex; min-height: 43px; align-items: center; gap: 12px; padding: 0 11px; border: 1px solid transparent; border-radius: 4px; color: #a8abad; font-size: 12px; font-weight: 500; transition: color 150ms ease, background 150ms ease, border-color 150ms ease, gap 220ms ease, padding 220ms ease; }
 .nav-label, .help-label, .sidebar-version-label { max-width: 140px; overflow: hidden; white-space: nowrap; transition: max-width 220ms ease, opacity 140ms ease, transform 180ms ease; }
@@ -946,12 +958,14 @@ h1 span { color: var(--yellow); }
   .site-shell.is-sidebar-collapsed .sidebar-collapse-toggle { top: 34px; right: 7px; }
   .site-shell.is-sidebar-collapsed .main-nav { margin-top: 74px; }
   .nav-link, .help-link { display: grid; grid-template-columns: 18px minmax(0, 1fr) 14px; column-gap: 12px; }
+  .nav-group-trigger .nav-group-chevron { grid-column: 3; justify-self: end; }
   .nav-link > .nav-icon, .help-link > .nav-icon { grid-column: 1; justify-self: center; }
   .nav-label, .help-label { min-width: 0; grid-column: 2; }
   .nav-arrow, .help-arrow { grid-column: 3; justify-self: end; margin-left: 0; }
   .sidebar-version { display: grid; grid-template-columns: 6px minmax(0, 1fr); }
   .site-shell.is-sidebar-collapsed .nav-link,
   .site-shell.is-sidebar-collapsed .help-link { grid-template-columns: 18px 0 0; justify-content: center; gap: 0; padding: 0; }
+  .site-shell.is-sidebar-collapsed .nav-group-trigger .nav-group-chevron { display: none; }
   .site-shell.is-sidebar-collapsed .sidebar-version { grid-template-columns: 6px 0; justify-content: start; gap: 0; padding: 14px 11px 0; }
 }
 @media (max-width: 1050px) {
@@ -978,6 +992,10 @@ h1 span { color: var(--yellow); }
   .main-nav { display: flex; overflow-x: auto; gap: 4px; margin: 0 -15px; padding: 0 10px 9px; scrollbar-width: none; }
   .main-nav::-webkit-scrollbar { display: none; }
   .nav-link { min-height: 35px; flex: 0 0 auto; gap: 7px; padding: 0 9px; font-size: 10px; }
+  .nav-group { flex: 0 0 auto; }
+  .nav-group-trigger { width: auto; min-height: 35px; gap: 7px; padding: 0 9px; font-size: 10px; }
+  .nav-group-trigger .nav-group-chevron { width: 12px; flex-basis: 12px; }
+  .nav-submenu { position: absolute; z-index: 12; top: calc(100% + 4px); left: 0; width: 175px; margin: 0; padding: 6px; border-radius: 8px; background: var(--panel); box-shadow: var(--shadow-soft); }
   .nav-link::before { top: auto; right: 9px; bottom: -1px; left: 9px; width: auto; height: 2px; }
   .topbar { height: 55px; padding: 0 15px; }
   .topbar-label { font-size: 7px; letter-spacing: .8px; }
@@ -1100,7 +1118,12 @@ h1 span { color: var(--yellow); }
   .mobile-menu-close:hover, .mobile-menu-toggle:hover { color: var(--text); background: var(--line-soft); }
   .site-shell .sidebar-caption, .site-shell.is-sidebar-collapsed .sidebar-caption { display: block; max-height: none; margin: 15px 11px 10px; opacity: 1; }
   .site-shell .main-nav, .site-shell.is-sidebar-collapsed .main-nav { display: grid; overflow: visible; gap: 5px; margin: 0; padding: 0; }
+  .site-shell .nav-group { width: 100%; }
   .site-shell .sidebar .nav-link, .site-shell.is-sidebar-collapsed .sidebar .nav-link, .site-shell.is-sidebar-collapsed .sidebar .help-link { width: auto; min-height: 46px; justify-content: flex-start; gap: 12px; padding: 0 11px; font-size: 13px; }
+  .site-shell .sidebar .nav-group-trigger { width: 100%; }
+  .site-shell .sidebar .nav-group-trigger .nav-group-chevron { width: 15px; flex-basis: 15px; }
+  .site-shell .nav-submenu { position: static; width: auto; margin: 0 0 5px 41px; padding: 0; border-radius: 0; background: transparent; box-shadow: none; }
+  .site-shell .nav-sublink { min-height: 39px; font-size: 12px; }
   .site-shell .sidebar .nav-link::before { top: 10px; right: auto; bottom: 10px; left: -1px; width: 2px; height: auto; }
   .site-shell .sidebar-bottom { display: grid; }
   .site-shell.is-sidebar-collapsed .sidebar-version { justify-content: flex-start; padding: 14px 11px 0; }

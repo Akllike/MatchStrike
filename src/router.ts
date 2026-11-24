@@ -29,7 +29,9 @@ export const router = createRouter({
         { path: 'matches', redirect: { name: 'matches-mode', params: { mode: 'mix' } } },
         { path: 'matches/:mode(mix|war)', name: 'matches-mode', component: MatchesPage },
         { path: 'matches/:id(\\d+)', name: 'match-detail', component: MatchDetailPage },
-        { path: 'stats', name: 'stats', component: StatsPage },
+        { path: 'stats', name: 'stats', redirect: { name: 'stats-players' } },
+        { path: 'stats/players', name: 'stats-players', component: StatsPage },
+        { path: 'stats/season', name: 'stats-season', component: StatsPage },
         { path: 'bans', name: 'bans', component: BansPage },
         { path: 'profile/:nickname', name: 'profile', component: ProfilePage },
         { path: 'friends', name: 'friends', component: FriendsPage, meta: { requiresAuth: true } },
@@ -50,6 +52,7 @@ export const router = createRouter({
 router.beforeEach(async (to) => {
   await loadWebsiteSettings()
   if (to.name === 'lobby' && !websiteSettings.value.lobbyEnabled && !to.query.room) return { name: 'home' }
+  if (to.name === 'stats-season' && !websiteSettings.value.seasonEnabled) return { name: 'stats-players' }
   const requiresAdmin = to.matched.some((record) => record.meta.requiresAdmin)
   const requiredAdminPermission = to.meta.adminPermission as string | undefined
   if (!requiresAdmin && !to.matched.some((record) => record.meta.requiresAuth)) return true

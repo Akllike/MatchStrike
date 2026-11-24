@@ -4,7 +4,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { websiteSettings } from './websiteSettings'
 import { useRoute, useRouter } from 'vue-router'
 import { Users, Plus, LockKeyhole, Crown, ArrowLeft, ArrowUpRight, X, Copy, Play, Timer, Map, Settings, ShieldCheck, LoaderCircle, Swords, Trophy } from '@lucide/vue'
-import { getCurrentUser, getLobbies, getLobby, saveLobby, takeLobbySeat, leaveLobby, startLobby, cancelLobby, kickLobbyMember, beginLobbyVeto, chooseLobbyMap } from './api'
+import { getCurrentUser, getLobbies, getLobby, saveLobby, takeLobbySeat, leaveLobby, startLobby, cancelLobby, kickLobbyMember, chooseLobbyMap } from './api'
 import Pusher from 'pusher-js'
 import LobbyVeto from './components/LobbyVeto.vue'
 import type { AuthUser, LobbyListing, LobbyRoom, LobbySettings } from './api'
@@ -70,6 +70,7 @@ const stateLabels: Record<LobbyRoom['status'], string> = { waiting: 'Набор 
 const seatMember = (team: number, seat: number) => room.value?.members.find(member => member.team === team && member.seat === seat)
 function closeReason(reason: string | null): string {
   const messages: Record<string, string> = {
+    captain_inactive: 'Комната закрыта: её капитан был не в сети более пяти минут.',
     connect_timeout: 'За пять минут состав не подключился. Сервер освобождается.',
     not_enough_players: 'Матч отменён: к концу подготовки составы сторон оказались неполными.',
     preparation_timeout: 'Игровой сервер не подтвердил запуск после подготовки. Матч отменён.',
@@ -91,7 +92,6 @@ watch(selectedRoomId, id => {
 })
 
 function retryLoading() { error.value = ''; loading.value = true; void refresh(true) }
-async function beginVeto(captains: number[]) { await act(async()=>{room.value=await beginLobbyVeto(room.value!.id,captains)}) }
 async function chooseMap(map: string) {
   const current=room.value
   if (!current?.veto) return
@@ -229,7 +229,7 @@ onUnmounted(() => { disposed = true; version++; socket?.disconnect(); if (poll) 
         <div class="lobby-room-actions"><button v-if="captain && room.status === 'waiting' && !room.veto && websiteSettings.lobbyEnabled" class="friend-action" :disabled="busy" @click="openEditor(true)"><Settings :size="14" /> Настройки</button><button v-if="websiteSettings.lobbyEnabled" class="friend-action" @click="invite()"><Copy :size="14" /> Пригласить</button></div>
       </section>
       <div v-if="room.maps.length" class="lobby-room-maps"><span><Map :size="15" /> Карты матча</span><b v-for="(map, index) in room.maps" :key="map"><small>{{ String(index + 1).padStart(2, '0') }}</small>{{ map }}</b></div>
-      <LobbyVeto v-if="room.format!=='Classic' && !terminal" :key="room.id" :room="room" :user-id="user?.id" :busy="busy" :now="now" :enabled="websiteSettings.lobbyEnabled" @begin="beginVeto" @choose="chooseMap" />
+      <LobbyVeto v-if="room.format!=='Classic' && room.veto && !terminal" :key="room.id" :room="room" :user-id="user?.id" :busy="busy" :now="now" :enabled="websiteSettings.lobbyEnabled" @choose="chooseMap" />
       <div v-if="room.status === 'provisioning' || room.status === 'joining'" class="lobby-countdown"><Timer :size="27" /><div><strong>{{ countdown }}</strong><span>на подключение и начало матча</span></div><p>{{ room.status === 'provisioning' ? 'Игровой сервер готовит карту и защищает вход. Адрес появится после подтверждения готовности.' : room.preparationEndsAt ? 'Все игроки заняли свои стороны и появились на карте. Идёт 30-секундная подготовка перед ножевым раундом.' : 'Подключитесь через Steam и займите свою сторону. Когда все игроки появятся на карте, начнётся отсчёт 30 секунд.' }}</p></div>
       <div v-if="terminal" class="lobby-result"><Trophy :size="24" /><h3>{{ room.status === 'completed' ? 'Матч завершён' : 'Комната закрыта' }}</h3><p>{{ closeReason(room.finishReason) }}</p><RouterLink v-if="room.matchId" :to="`/matches/${room.matchId}`" class="friend-action">Страница матча <ArrowUpRight :size="14" /></RouterLink></div>
       <div v-else class="lobby-teams">
@@ -243,7 +243,7 @@ onUnmounted(() => { disposed = true; version++; socket?.disconnect(); if (poll) 
         </section>
       </div>
       <div v-if="room.server && mine" class="lobby-connect"><div><span class="section-kicker">ВАШ ИГРОВОЙ СЕРВЕР</span><h3>{{ room.server.address }}</h3><p>Пароль: <code>{{ room.server.password }}</code><button type="button" aria-label="Скопировать пароль" @click="copy(room.server.password, 'Пароль')"><Copy :size="13" /></button></p></div><div><button class="friend-action" @click="copy(`password ${room.server.password}; connect ${room.server.address}`, 'Команда')"><Copy :size="14" /> Команда подключения</button><a class="lobby-primary" :href="`steam://connect/${room.server.address}/${encodeURIComponent(room.server.password)}`"><Play :size="15" /> Подключиться</a></div></div>
-      <footer v-if="!terminal" class="lobby-controls"><p><Crown :size="16" /> {{ captain ? 'Вы капитан комнаты' : 'Настройки и запуск — у капитана комнаты' }}<span v-if="room.status === 'waiting'">{{ filled ? 'Обе команды в сборе' : `Ожидаем ещё ${room.teamSize * 2 - room.members.length} игроков` }}</span></p><div><button v-if="mine && room.status === 'waiting'" class="friend-action" :disabled="busy" @click="act(async () => { await leaveLobby(room!.id); back() })">Покинуть</button><button v-if="captain && ['waiting', 'joining', 'provisioning'].includes(room.status)" class="friend-action" :disabled="busy" @click="act(async () => { await cancelLobby(room!.id); back() })">Закрыть комнату</button><button v-if="captain && room.status === 'waiting'" class="lobby-primary" :disabled="busy || !filled || !websiteSettings.lobbyEnabled || (room.format !== 'Classic' && !room.veto?.complete)" @click="act(async () => { room = await startLobby(room!.id) })"><LoaderCircle v-if="busy" class="is-spinning" :size="16" /><Play v-else :size="16" /> Запустить матч</button><RouterLink v-if="room.matchId" class="friend-action" :to="`/matches/${room.matchId}`">Матч <ArrowUpRight :size="14" /></RouterLink></div></footer>
+      <footer v-if="!terminal" class="lobby-controls"><p><Crown :size="16" /> {{ captain ? 'Вы капитан комнаты' : 'Настройки и запуск — у капитана комнаты' }}<span v-if="room.status === 'waiting'">{{ room.veto ? (room.veto.complete ? 'Вето завершено · готовим сервер' : 'Капитаны выбирают карты') : filled ? 'Обе команды в сборе' : `Ожидаем ещё ${room.teamSize * 2 - room.members.length} игроков` }}</span></p><div><button v-if="mine && room.status === 'waiting'" class="friend-action" :disabled="busy" @click="act(async () => { await leaveLobby(room!.id); back() })">Покинуть</button><button v-if="captain && ['waiting', 'joining', 'provisioning'].includes(room.status)" class="friend-action" :disabled="busy" @click="act(async () => { await cancelLobby(room!.id); back() })">Закрыть комнату</button><button v-if="captain && room.status === 'waiting' && !room.veto" class="lobby-primary" :disabled="busy || !filled || !websiteSettings.lobbyEnabled" @click="act(async () => { room = await startLobby(room!.id) })"><LoaderCircle v-if="busy" class="is-spinning" :size="16" /><Play v-else :size="16" /> Запустить матч</button><RouterLink v-if="room.matchId" class="friend-action" :to="`/matches/${room.matchId}`">Матч <ArrowUpRight :size="14" /></RouterLink></div></footer>
     </div>
     </Transition>
     <SiteAlert :message="copied ? `${copied} скопирована` : ''" tone="success" @close="copied = ''" />
